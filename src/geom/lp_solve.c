@@ -32,7 +32,9 @@ void lp_destroy(lp_t *lp){
 }
 
 double lp_eval(const lp_t *lp, double *x){
-	return FCALL(ddot)(lp->n, lp->c, 1, x, 1);
+	const int ione = 1;
+	int n = lp->n;
+	return FCALL(ddot)(&n, lp->c, &ione, x, &ione);
 }
 
 int lp_in_domain(const lp_t *lp, double *x){
@@ -73,6 +75,12 @@ int lp_centering_newton(const lp_t *lp,
 	double f;
 	int iter;
 	
+	const int ione = 1;
+	const double done = 1.0;
+	const double dzero = 0.;
+	const double dnone = -1.;
+	const double dnhalf = -0.5;
+	
 	double lam2; // lambda^2 (Newton decrement)
 	double *work; // the overall work array that contains all of the following
 	double *g;    // gradient
@@ -102,7 +110,7 @@ int lp_centering_newton(const lp_t *lp,
 	Hi = g + n;   // size n
 	dx = Hi + n;  // size m
 	
-	FCALL(dcopy)(n, x0, 1, x_opt, 1); // x_opt = x0;
+	FCALL(dcopy)(&n, x0, &ione, x_opt, &ione); // x_opt = x0;
 	
 	f = lp_eval(lp, x_opt); // function value at previous point
 	for(i = 0; i < n; ++i){
@@ -124,28 +132,28 @@ int lp_centering_newton(const lp_t *lp,
 		// Therefore nu can be found first from the above symmetric system
 		// Then dx can be back solved.
 		for(j = 0; j < n; ++j){
-			FCALL(dcopy)(m, lp->A+m*j, 1, AH+m*j, 1);
-			FCALL(dscal)(m, Hi[j], AH+m*j, 1);
+			FCALL(dcopy)(&m, lp->A+m*j, &ione, AH+m*j, &ione);
+			FCALL(dscal)(&m, &Hi[j], AH+m*j, &ione);
 		} // AH = A*H^{-1}
 		// FCALL(dgemm)('N','T', m, m, n, -1.0, lp->A, m,
 		//              AH, m, 0.0, S, m); // S = -A*AH'
-		FCALL(dsyr2k)('L', 'N', m, n, -0.5, lp->A, m,
-		              AH, m, 0.0, S, m); // S = -A*AH'
-		FCALL(dgemv)('N', m, n, 1.0, AH, m, g, 1,
-		             0.0, nu_opt, 1); // AHg = AH*g
+		FCALL(dsyr2k)("L", "N", &m, &n, &dnhalf, lp->A, &m,
+		              AH, &m, &dzero, S, &m); // S = -A*AH'
+		FCALL(dgemv)("N", &m, &n, &done, AH, &m, g, &ione,
+		             &dzero, nu_opt, &ione); // AHg = AH*g
 		// Solves S*nu = AHg
-		FCALL(dsysv)('L', m, 1, S, m, iwork, nu_opt, m,
-		             AH /*use as scratch*/, n,
+		FCALL(dsysv)("L", &m, &ione, S, &m, iwork, nu_opt, &m,
+		             AH /*use as scratch*/, &n,
 					 &info);
 		if(0 != info){ ret = 3; goto error_solve; }
 		// Solves H*v = -A'*nu - g
-		FCALL(dgemv)('T', m, n, -1.0, lp->A, m, nu_opt, 1,
-		             0.0, dx, 1); // dx = -A'*nu
+		FCALL(dgemv)("T", &m, &n, &dnone, lp->A, &m, nu_opt, &ione,
+		             &dzero, dx, &ione); // dx = -A'*nu
 		for(i = 0; i < n; ++i){
 			dx[i] = Hi[i]*(dx[i] - g[i]);
 		}
 
-		lam2 = -FCALL(ddot)(n, dx, 1, g, 1); // lam2 = dx'*g
+		lam2 = -FCALL(ddot)(&n, dx, &ione, g, &ione); // lam2 = dx'*g
 		
 		// At this point, g is preserved, Hi no longer needed;
 		double *xp = Hi; // xp = x + t*dx (reusing storage)
@@ -158,8 +166,8 @@ int lp_centering_newton(const lp_t *lp,
 		int found = 0;
 		while(0 == found){
 			if(0 == t){ ret = 3; break; }
-			FCALL(dcopy)(n, x_opt, 1, xp, 1);
-			FCALL(daxpy)(n, t, dx, 1, xp, 1); // xp = x + t*dx;
+			FCALL(dcopy)(&n, x_opt, &ione, xp, &ione);
+			FCALL(daxpy)(&n, &t, dx, &ione, xp, &ione); // xp = x + t*dx;
 			if(0 == lp_in_domain(lp, xp)){ t *= beta; continue; }
 			double fp = lp_eval(lp, xp);
 			for(i = 0; i < n; ++i){
@@ -169,7 +177,7 @@ int lp_centering_newton(const lp_t *lp,
 			else{
 				found = 1;			
 				//// Update
-				FCALL(dcopy)(n, xp, 1, x_opt, 1); // x = xp;
+				FCALL(dcopy)(&n, xp, &ione, x_opt, &ione); // x = xp;
 				f = fp; // update the objective value
 				break;
 			}
@@ -205,6 +213,8 @@ int lp_solve_with_feasible_starting_point(const lp_t *lp,
 	const double initial_objective_weight = 1.0;
 	const int max_iterations = 1000; // to prevent out of control loops
 	
+	const int ione = 1;
+	
 	if(NULL == lp){ return -1; }
 	if(NULL == x0){ return -2; }
 	if(NULL == x_opt){ return -3; }
@@ -225,7 +235,7 @@ int lp_solve_with_feasible_starting_point(const lp_t *lp,
 	xp = work; // size n
 	if(NULL == nu_opt){ nu = xp + n; }
 	
-	FCALL(dcopy)(n, x0, 1, xp, 1);
+	FCALL(dcopy)(&n, x0, &ione, xp, &ione);
 	
 	int iter;
 	for(iter = 0; iter < max_iterations; ++iter){
@@ -236,7 +246,7 @@ int lp_solve_with_feasible_starting_point(const lp_t *lp,
 		if(NULL != n_steps){ *n_steps += ns; }
 		
 		//// Update
-		FCALL(dcopy)(n, x_opt, 1, xp, 1);
+		FCALL(dcopy)(&n, x_opt, &ione, xp, &ione);
 		
 		//// Stopping criterion
 		if((double)n/t < tolerance){ break; }
@@ -279,6 +289,10 @@ int lp_solve(const lp_t *lp,
 	const int mn = m*n;
 	register int i, j;
 	
+	const int ione = 1;
+	const double done = 1.;
+	const double dnone = -1.;
+	
 	double *work;
 	double *b_new, *c_new, *Acopy, *zt, *zt_opt;
 	int lwork = m + (n+1) + mn + 2*(n+1);
@@ -315,13 +329,12 @@ int lp_solve(const lp_t *lp,
 	lp1.b = b_new;
 	lp1.c = c_new;
 	// Set the new b vector
-	FCALL(dcopy)(n, lp->b, 1, lp1.b, 1);
+	FCALL(dcopy)(&n, lp->b, &ione, lp1.b, &ione);
 	for(i = 0; i <= n; ++i){ // set all of c to be 1
 		lp1.c[i] = 1.0;
 	}
-	const char fcN = 'N';
-	FCALL(dgemv)(fcN, m, n, -1.0, lp->A, m, lp1.c, 1,
-	             1.0, lp1.b, 1); // b <- -A*ones + b
+	FCALL(dgemv)("N", &m, &n, &dnone, lp->A, &m, lp1.c, &ione,
+	             &done, lp1.b, &ione); // b <- -A*ones + b
 	memset(lp1.c, 0, n*sizeof(double)); // set the first n elements to zero
 	for(i = 0; i < m; ++i){ // set the last column of the augmented A
 		lp1.A[i+mn] = 0;
@@ -332,17 +345,17 @@ int lp_solve(const lp_t *lp,
 	// Find an x0 (place it in x for now)
 	double *dgels_work;
 	int dgels_lwork = -1;
-	FCALL(dgels)(fcN, m, n, 1, Acopy, m, zt, n,
-	             Acopy, dgels_lwork, &info); // workspace query
+	FCALL(dgels)("N", &m, &n, &ione, Acopy, &m, zt, &n,
+	             Acopy, &dgels_lwork, &info); // workspace query
 	dgels_lwork = (int)Acopy[0];
 	dgels_work = (double*)malloc(dgels_lwork*sizeof(double));
 	if(NULL == dgels_work){ ret = 1; goto error_dgels_work; }
 
-	FCALL(dcopy)(mn, lp->A, 1, Acopy, 1);
-	FCALL(dcopy)(m, lp->b, 1, zt, 1);
+	FCALL(dcopy)(&mn, lp->A, &ione, Acopy, &ione);
+	FCALL(dcopy)(&m, lp->b, &ione, zt, &ione);
 	// Solves A*xt == b, least norm solution
-	FCALL(dgels)('N', m, n, 1, Acopy, m, zt, n,
-	             dgels_work, dgels_lwork,
+	FCALL(dgels)("N", &m, &n, &ione, Acopy, &m, zt, &n,
+	             dgels_work, &dgels_lwork,
 				 &info);
 	if(0 != info){ ret = 3; goto error_rank; }
 	
@@ -396,6 +409,9 @@ int lp_check_KKT(const lp_t *lp, double *x, double *nu){
 	double nrm, *temp;
 	register int i;
 	const double tol = 8*(double)n*DBL_EPSILON;
+	const int ione = 1;
+	const double done = 1.;
+	const double dnone = -1.;
 	
 	temp = (double*)malloc(n*sizeof(double));
 	if(NULL == temp){ return 1; }
@@ -404,11 +420,11 @@ int lp_check_KKT(const lp_t *lp, double *x, double *nu){
 	//   Ax = b
 	//   A'nu + c - 1./x = 0
 	// First check the condition A*x == b:
-	FCALL(dcopy)(m, lp->b, 1, temp, 1); // temp = b
+	FCALL(dcopy)(&m, lp->b, &ione, temp, &ione); // temp = b
 	// temp = b - A*x
-	FCALL(dgemv)('N', m, n, 1.0, lp->A, m, x, 1, -1.0, temp, 1);
+	FCALL(dgemv)("N", &m, &n, &done, lp->A, &m, x, &ione, &dnone, temp, &ione);
 	// temp should be small
-	nrm = FCALL(dnrm2)(m, temp, 1);
+	nrm = FCALL(dnrm2)(&m, temp, &ione);
 	if(nrm > tol){
 		return -1;
 	}
@@ -419,9 +435,9 @@ int lp_check_KKT(const lp_t *lp, double *x, double *nu){
 		temp[i] = lp->c[i] - 1.0/x[i];
 	}
 	// temp = A'*nu + c - H*x
-	FCALL(dgemv)('T', m, n, 1.0, lp->A, m, nu, 1, 1.0, temp, 1);
+	FCALL(dgemv)("T", &m, &n, &done, lp->A, &m, nu, &ione, &done, temp, &ione);
 	// temp should be small
-	nrm = FCALL(dnrm2)(n, temp, 1);
+	nrm = FCALL(dnrm2)(&n, temp, &ione);
 	if(nrm > tol){
 		return -1;
 	}

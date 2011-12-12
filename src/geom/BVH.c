@@ -130,7 +130,6 @@ static void BVH2_STR(int *n_, BVH2 *B){
 	const int n = *n_;
 	const int P = (n+3)/4;
 	const int S = isqrt_ceil(P);
-	const int slice_size = 4*S;
 	*n_ = 0;
 	
 	// Sort rectangles by first coordinate
@@ -184,7 +183,7 @@ static void BVH2_STR(int *n_, BVH2 *B){
 	BVHDBG("Iteration of STR done; n=%d -> %d\n", n, *n_);
 }
 BVH2 BVH2_new(int n, int (*shape_iterator)(double b[4], int *tag, void *data), void *data){
-	int i, j;
+	int i;
 	
 	BVH2 *B = (BVH2*)malloc(sizeof(BVH2) * n);
 	BVH2 ret;
@@ -208,7 +207,6 @@ static void BVH3_STR(int *n_, BVH3 *B){
 	const int n = *n_;
 	const int P = (n+7)/8;
 	const int S = icbrt_ceil(P);
-	const int slice_size = 8*S;
 	*n_ = 0;
 	
 	// Sort rectangles by first coordinate
@@ -276,7 +274,7 @@ static void BVH3_STR(int *n_, BVH3 *B){
 	BVHDBG("Iteration of STR done; n=%d -> %d\n", n, *n_);
 }
 BVH3 BVH3_new(int n, int (*shape_iterator)(double b[6], int *tag, void *data), void *data){
-	int i, j;
+	int i;
 	
 	BVH3 *B = (BVH3*)malloc(sizeof(BVH3) * n);
 	BVH3 ret;

@@ -4,24 +4,11 @@
 #include <math.h>
 #include "lp_solve.h"
 
-static double inline hypot2(double a, double b){
-	double w, z;
-	double aa = fabs(a);
-	double ab = fabs(b);
-	if(ab > aa){
-		w = ab; z = aa;
-	}else{
-		w = aa; z = ab;
-	}
-	if(0 == z){ return w; }
-	z /= w;
-	return w*sqrt(1.+z*z);
-}
 static double inline hypot22(double a, double b){
 	return a*a+b*b;
 }
 static double inline hypot2v(const double v[2]){
-	return hypot2(v[0],v[1]);
+	return hypot(v[0],v[1]);
 }
 static double inline hypot2v2(const double v[2]){
 	return v[0]*v[0] + v[1]*v[1];
