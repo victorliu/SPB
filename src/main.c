@@ -48,48 +48,79 @@ static int SPB_get_interactive(lua_State *L){
 }
 
 static const char* Lua_SPB_BandSolver_typename = "SPB.BandSolver";
+static SPB_BandSolver* Lua_SPB_BandSolver_this(lua_State *L){
+	SPB_BandSolver **pS = luaL_checkudata(L, 1, Lua_SPB_BandSolver_typename);
+	luaL_argcheck(L, NULL !=  pS, 1, "Internal error: Got a NULL SPB_BandSolver** pointer");
+	luaL_argcheck(L, NULL != *pS, 1, "Internal error: Got a NULL SPB_BandSolver* pointer");
+	return *pS;
+}
 
 static int Lua_SPB_NewBandSolver(lua_State *L){
-	int i;
 	luaarg_double_matrix Lr;
 	char *pol = NULL;
-	int numbands = 0;
-	luaarg_int_vector res;
-	double targ[2];
-	double tol;
+	SPB_BandSolver **pS;
 	const luaarg_argspec args[] = {
 		{"Lattice"        , luaarg_type_DOUBLE_MAT, 0, &Lr},
 		{"Polarization"   , luaarg_type_STRING    , 1, &pol},
-		{"NumBands"       , luaarg_type_INT       , 1, &numbands},
-		{"Resolution"     , luaarg_type_INT_VEC   , 1, &res},
-		{"TargetFrequency", luaarg_type_COMPLEX   , 1, &targ[0]},
-		{"Tolerance"      , luaarg_type_DOUBLE    , 1, &tol},
 		{NULL, 0, 0, NULL}
 	};
-	luaarg_parse(L, 2, args);
+	luaarg_parse(L, 1, args);
 	
 	if(2 == Lr.r && 2 == Lr.c){
 		if(NULL == pol){
 			luaL_error(L, "Must specify Polarization for 2D bandsolver\n");
 		}
-		if(2 != res.n){
-			luaL_error(L, "Must specify 2-vector for resolution\n");
-		}
 		if('H' != pol[0] && 'E' != pol[0]){
 			luaL_error(L, "Polarization must be 'E' or 'H'\n");
 		}
 	}else if(3 == Lr.r && 3 == Lr.c){
-		if(3 != res.n){
-			luaL_error(L, "Must specify 3-vector for resolution\n");
-		}
 	}else{
 		luaL_error(L, "Lattice must be a 2x2 or 3x3 matrix\n");
 	}
+	
+	pS = (SPB_BandSolver**)lua_newuserdata(L, sizeof(SPB_BandSolver*));
+	if(2 == Lr.r){
+		*pS = SPB_BandSolver_New(2, pol[0], Lr.m);
+	}else{
+		*pS = SPB_BandSolver_New(2, ' ', Lr.m);
+	}
+	
+	/* clean up allocations made by luaarg_parse */
+	free(Lr.m);
+	free(pol);
+	return 1;
+}
+
+static int Lua_SPB_BandSolver__gc(lua_State *L){
+	SPB_BandSolver_Destroy(Lua_SPB_BandSolver_this(L));
+	return 0;
+}
+
+static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
+	int i;
+	int numbands = 0;
+	double targ[2];
+	double tol;
+	double res[3];
+	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
+	int dim = SPB_BandSolver_GetDimension(S);
+	luaarg_argspec args[] = {
+		{"Resolution"     , luaarg_type_INT_VEC3  , 1, &res[0]},
+		{"NumBands"       , luaarg_type_INT       , 1, &numbands},
+		{"TargetFrequency", luaarg_type_COMPLEX   , 1, &targ[0]},
+		{"Tolerance"      , luaarg_type_DOUBLE    , 1, &tol},
+		{NULL, 0, 0, NULL}
+	};
+	if(2 == dim){
+		args[0].type = luaarg_type_INT_VEC2;
+	}
+	luaarg_parse(L, 2, args);
+	
 	if(numbands < 0){
 		luaL_error(L, "NumBands must >= 0\n");
 	}
-	for(i = 0; i < res.n; ++i){
-		if(res.v[i] <= 0){
+	for(i = 0; i < dim; ++i){
+		if(res[i] <= 0){
 			luaL_error(L, "Resolution must be positive numbers\n");
 		}
 	}
@@ -97,13 +128,8 @@ static int Lua_SPB_NewBandSolver(lua_State *L){
 		luaL_error(L, "Tolerance must be in (0,1)\n");
 	}
 	
-	free(pol);
-	return 0;
-}
-
-static int Lua_SPB_BandSolver__gc(lua_State *L){
-	SPB_BandSolver *S = (SPB_BandSolver*)luaL_checkudata(L, 1, Lua_SPB_BandSolver_typename);
-	SPB_BandSolver_Destroy(S);
+	/* do set */
+	
 	return 0;
 }
 
@@ -116,6 +142,7 @@ static void Lua_SPB_Lib_Init(lua_State *L){
 		{NULL, NULL}
 	};
 	static const struct luaL_Reg Lua_SPB_BandSolver[] = {
+		{"SetOptions", Lua_SPB_BandSolver_SetOptions},
 		{"AddMaterial", Lua_SPB_BandSolver_AddMaterial},
 		{NULL, NULL}
 	};

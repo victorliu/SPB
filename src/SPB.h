@@ -49,8 +49,11 @@ typedef struct tag_SPB_ConstitutiveTensor{
 
 typedef struct tag_SPB_BandSolver SPB_BandSolver;
 
-SPB_BandSolver* SPB_BandSolver_New(int dim, int pol, double *Lr);
+SPB_BandSolver* SPB_BandSolver_New(int dim, char pol, double *Lr);
 void            SPB_BandSolver_Destroy(SPB_BandSolver *S);
+
+int SPB_BandSolver_GetDimension(SPB_BandSolver *S);
+char SPB_BandSolver_GetPolarization(SPB_BandSolver *S);
 
 int SPB_BandSolver_AddMaterial(SPB_BandSolver *S, const char *name, const SPB_ConstitutiveTensor *eps);
 int SPB_BandSolver_SetMaterial(SPB_BandSolver *S, const char *name, const SPB_ConstitutiveTensor *eps);

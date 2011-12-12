@@ -1,13 +1,16 @@
-S = SPB.NewSimulation{
+S = SPB.NewBandSolver{
 	Lattice = {
 		{1,0},
 		{0,1}
 	},
-	Polarization = 'E',
+	Polarization = 'E'
+}
+--[[
+S:SetOptions{
 	NumBands = 10,
 	Resolution = 20,
 	TargetFrequency = 0.1,
-	Tolerance = 1e-7;
+	Tolerance = 1e-7
 }
 
 S:AddMaterial{
@@ -32,7 +35,7 @@ S:AddRectangle{
 S:SolveK{0,0}
 
 print(unpack(S:GetFrequencies()));
-
+]]
 --[[
 band1 = S:GetBand(1);
 band2 = S:GetBand(2);
