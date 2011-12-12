@@ -123,7 +123,7 @@ static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 	}
 	for(i = 0; i < dim; ++i){
 		if(res[i] <= 0){
-			luaL_error(L, "Resolution must be positive numbers\n");
+			luaL_error(L, "Resolution must be positive numbers; element %d is %d\n", i+1, res[i]);
 		}
 	}
 	if(tol <= 0 || tol >= 1){
@@ -254,12 +254,9 @@ int main(int argc, char *argv[]){
 	int c;
 	int index, error;
 	char *arg = NULL;
-	int mpi_size = 1, mpi_rank = 0;
 	
 #ifdef HAVE_MPI
 	MPI_Init(&argc, &argv);
-	MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
-	MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
 #endif
 	
 	opterr = 0;
@@ -301,18 +298,6 @@ int main(int argc, char *argv[]){
 		lua_settable(L, -3);
 		lua_pop(L, 1);
 	}
-	
-	/*
-	// Would rather have this in MPI library.
-	lua_getglobal(L, "SPB");
-	lua_pushstring(L, "MPIRank");
-	lua_pushinteger(L, mpi_rank);
-	lua_settable(L, -3);
-	lua_pushstring(L, "MPISize");
-	lua_pushinteger(L, mpi_size);
-	lua_settable(L, -3);
-	lua_pop(L, 1);
-	*/
 	
 	if(optind < argc){ // has at least 1 argument
 		SPB_set_interactive(L, 0);

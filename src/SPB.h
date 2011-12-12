@@ -52,8 +52,8 @@ typedef struct tag_SPB_BandSolver SPB_BandSolver;
 SPB_BandSolver* SPB_BandSolver_New(int dim, char pol, double *Lr);
 void            SPB_BandSolver_Destroy(SPB_BandSolver *S);
 
-int SPB_BandSolver_GetDimension(SPB_BandSolver *S);
-char SPB_BandSolver_GetPolarization(SPB_BandSolver *S);
+int SPB_BandSolver_GetDimension(const SPB_BandSolver *S);
+char SPB_BandSolver_GetPolarization(const SPB_BandSolver *S);
 
 int SPB_BandSolver_AddMaterial(SPB_BandSolver *S, const char *name, const SPB_ConstitutiveTensor *eps);
 int SPB_BandSolver_SetMaterial(SPB_BandSolver *S, const char *name, const SPB_ConstitutiveTensor *eps);
@@ -66,7 +66,7 @@ int SPB_BandSolver_AddRectangle(SPB_BandSolver *S,
 	double halfwidth[2],
 	double angle);
 
-int SPB_BandSolver_OutputEpsilon(SPB_BandSolver *S,
+int SPB_BandSolver_OutputEpsilon(const SPB_BandSolver *S,
 	int *res,
 	const char *filename,
 	const char *format);
@@ -78,8 +78,8 @@ int SPB_BandSolver_SetTargetFrequency(SPB_BandSolver *S, double freq);
 int SPB_BandSolver_SetTargetFrequencyRange(SPB_BandSolver *S, double freq0, double freq1);
 
 int SPB_BandSolver_SolveK(SPB_BandSolver *S, double *k);
-int SPB_BandSolver_GetFrequencies(SPB_BandSolver *S, int *n, SPB_complex_ptr z);
-int SPB_BandSolver_GetNumFrequencies(SPB_BandSolver *S);
-int SPB_BandSolver_GetBand(SPB_BandSolver *S, int n, SPB_complex_ptr z);
+int SPB_BandSolver_GetFrequencies(const SPB_BandSolver *S, int *n, SPB_complex_ptr z);
+int SPB_BandSolver_GetNumFrequencies(const SPB_BandSolver *S);
+int SPB_BandSolver_GetBand(const SPB_BandSolver *S, int n, SPB_complex_ptr z);
 
 #endif /* _SPB_H_INCLUDED_ */

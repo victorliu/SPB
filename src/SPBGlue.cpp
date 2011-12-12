@@ -40,11 +40,11 @@ void SPB_BandSolver_Destroy(SPB_BandSolver *S){
 }
 
 
-int SPB_BandSolver_GetDimension(SPB_BandSolver *S){
+int SPB_BandSolver_GetDimension(const SPB_BandSolver *S){
 	if(NULL == S){ return 0; }
 	return S->dim;
 }
-char SPB_BandSolver_GetPolarization(SPB_BandSolver *S){
+char SPB_BandSolver_GetPolarization(const SPB_BandSolver *S){
 	if(NULL == S){ return 0; }
 	return S->pol;
 }
@@ -96,16 +96,42 @@ int SPB_BandSolver_AddRectangle(SPB_BandSolver *S,
 	double halfwidth[2],
 	double angle
 ){
+	shape2 r;
+	double ca, sa, idet;
+	if(NULL == S){ return -1; }
+	if(2 != S->dim){ return -1; }
+	if(NULL == material){ return -2; }
+	if(NULL == center){ return -2; }
+	if(NULL == halfwidth){ return -2; }
+	
+	ca = cos(angle);
+	sa = sin(angle);
+	
+	r.type = SHAPE2_QUAD;
+	r.o[0] = center[0];
+	r.o[1] = center[1];
+	r.quad.A[0] = ca*halfwidth[0];
+	r.quad.A[1] = sa*halfwidth[0];
+	r.quad.A[2] = -sa*halfwidth[1];
+	r.quad.A[3] = ca*halfwidth[1];
+	idet = 1./(halfwidth[0]*halfwidth[1]);
+	r.quad.B[0] = idet * ca*halfwidth[1];
+	r.quad.B[1] = idet *-sa*halfwidth[0];
+	r.quad.B[2] = idet * sa*halfwidth[1];
+	r.quad.B[3] = idet * ca*halfwidth[0];
+	S->S->AddShape(SPB::Shape2(r), material);
+	
 	return -1;
 }
 
-int SPB_BandSolver_OutputEpsilon(SPB_BandSolver *S,
+int SPB_BandSolver_OutputEpsilon(const SPB_BandSolver *S,
 	int *res,
 	const char *filename,
 	const char *format
 ){
 	if(NULL == S){ return -1; }
 	if(NULL == res){ return -2; }
+	S->S->OutputEpsilon(res, filename, format);
 	return -1;
 }
 
@@ -147,17 +173,17 @@ int SPB_BandSolver_SolveK(SPB_BandSolver *S, double *k){
 	if(NULL == k){ return -2; }
 	return -1;
 }
-int SPB_BandSolver_GetFrequencies(SPB_BandSolver *S, int *n, SPB_complex_ptr z){
+int SPB_BandSolver_GetFrequencies(const SPB_BandSolver *S, int *n, SPB_complex_ptr z){
 	if(NULL == S){ return -1; }
 	if(NULL == n){ return -2; }
 	if(NULL == z){ return -3; }
 	return -1;
 }
-int SPB_BandSolver_GetNumFrequencies(SPB_BandSolver *S){
+int SPB_BandSolver_GetNumFrequencies(const SPB_BandSolver *S){
 	if(NULL == S){ return -1; }
 	return -1;
 }
-int SPB_BandSolver_GetBand(SPB_BandSolver *S, int n, SPB_complex_ptr z){
+int SPB_BandSolver_GetBand(const SPB_BandSolver *S, int n, SPB_complex_ptr z){
 	if(NULL == S){ return -1; }
 	// check that n is valid
 	if(NULL == z){ return -3; }

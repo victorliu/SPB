@@ -9,6 +9,7 @@
 #include <Sparse.h>
 #include <fftw3.h>
 #include <cstring>
+#include <cstdio>
 #include <fstream>
 #include "util.h"
 #include <LinearSolve.h>
@@ -400,9 +401,9 @@ int SPB::BandSolver_Ez::SolveK(const double *k){
 	impl->ind = (int*)malloc(sizeof(int) * 2*Ngrid);
 	{
 		size_t next_index = 0;
-		for(size_t i = 0; i < res[0]; ++i){
+		for(int i = 0; i < res[0]; ++i){
 			const double fi = ((double)i+0.5/(double)res[0]) - 0.5;
-			for(size_t j = 0; j < res[1]; ++j){
+			for(int j = 0; j < res[1]; ++j){
 				const double fj = ((double)j+0.5/(double)res[1]) - 0.5;
 				impl->ind[2*IDX(i,j)+0] = next_index;
 				
@@ -476,8 +477,8 @@ int SPB::BandSolver_Ez::SolveK(const double *k){
 			complex_t(cos(k[0]*2*M_PI), sin(k[0]*2*M_PI)),
 			complex_t(cos(k[1]*2*M_PI), sin(k[1]*2*M_PI))
 		};
-		for(size_t i = 0; i < res[0]; ++i){
-			for(size_t j = 0; j < res[1]; ++j){
+		for(int i = 0; i < res[0]; ++i){
+			for(int j = 0; j < res[1]; ++j){
 				size_t row, col;
 				complex_t coeff;
 				
@@ -854,4 +855,34 @@ void SPB::BandSolver_Ez::OpForw(size_t n, const complex_t &shift, const complex_
 		}
 	}
 	fftw_free(t);
+}
+
+
+int SPB::BandSolver_Ez::OutputEpsilon(int *res, const char *filename, const char *format) const{
+	if(NULL == res){ return -1; }
+	if(NULL != format && 0 == strcmp(format, "gnuplot")){
+		FILE *fp = stdout;
+		if(NULL != filename){
+			fp = fopen(filename, "wb");
+		}
+		if(2 == dim){
+			double p[2];
+			for(int i = 0; i < res[0]; ++i){
+				double fi = ((double)i + 0.5) / (double)res[0];
+				for(int j = 0; j < res[1]; ++j){
+					double fj = ((double)j + 0.5) / (double)res[1];
+					p[0] = L.Lr[0]*fi + L.Lr[2]*fj;
+					p[1] = L.Lr[1]*fi + L.Lr[3]*fj;
+					int tag;
+					if(!shapeset.QueryPt(p, &tag)){ tag = -1; }
+					fprintf(fp, "%d\t%d\t%d\n", i, j, tag);
+				}
+				fprintf(fp, "\n");
+			}
+		}else{
+		}
+		if(NULL != filename){
+			fclose(fp);
+		}
+	}
 }

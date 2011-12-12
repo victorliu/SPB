@@ -79,7 +79,7 @@ class Shape{
 	friend class ShapeSet;
 public:
 	Shape(int dim):dim(dim){}
-	virtual ~Shape();
+	virtual ~Shape(){}
 	virtual bool Contains(const double *p) = 0;
 };
 
@@ -133,7 +133,7 @@ public:
 			return ShapeSet3_add(shapeset.ss3, (shape3*)s.GetBaseShape(), tag);
 		}
 	}
-	int QueryPt(const double *p, int *tag){
+	int QueryPt(const double *p, int *tag) const{
 		if(2 == dim){
 			return ShapeSet2_query_pt(shapeset.ss2, p, NULL, tag);
 		}else{
@@ -251,6 +251,8 @@ public:
 	void AddMaterial(const Material &mat){ matmap[mat.name] = material.size(); material.push_back(mat); }
 	int AddShape(const Shape &s, const std::string &matname);
 	
+	virtual int OutputEpsilon(int *res, const char *filename, const char *format) const = 0;
+	
 	void ClearSolution();
 	virtual int SolveK(const double *k) = 0;
 	std::vector<complex_t> GetFrequencies() const;
@@ -275,7 +277,7 @@ public:
 	~BandSolver_Ez();
 	
 	void SetResolution(size_t *N){ res[0] = N[0]; res[1] = N[1]; }
-	
+	int OutputEpsilon(int *res, const char *filename, const char *format) const;
 	int SolveK(const double *k);
 	
 	void Op(size_t n, const complex_t &shift, const complex_t *from, complex_t *to) const;

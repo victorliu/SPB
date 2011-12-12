@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <stdio.h>
+
 typedef void (*luaarg_handler)(lua_State *L, int index, void *val);
 
 static void luaarg_handler_table(lua_State *L, int index, void *val){
@@ -129,7 +131,7 @@ void luaarg_handler_int_mat3(lua_State *L, int index, void *val){
 }
 void luaarg_handler_int_vec2(lua_State *L, int index, void *val){
 	int i;
-	double *v = (double*)val;
+	int *v = (int*)val;
 	luaL_argcheck(L, lua_istable(L,index) && 2==lua_objlen(L,index), index, "Expected 2-vector");
 	for(i = 0; i < 2; ++i){
 		lua_pushinteger(L, i+1);
@@ -140,7 +142,7 @@ void luaarg_handler_int_vec2(lua_State *L, int index, void *val){
 }
 void luaarg_handler_int_vec3(lua_State *L, int index, void *val){
 	int i;
-	double *v = (double*)val;
+	int *v = (int*)val;
 	luaL_argcheck(L, lua_istable(L,index) && 3==lua_objlen(L,index), index, "Expected 3-vector");
 	for(i = 0; i < 3; ++i){
 		lua_pushinteger(L, i+1);
