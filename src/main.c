@@ -108,6 +108,7 @@ static int Lua_SPB_BandSolver__gc(lua_State *L){
 }
 
 static int Lua_SPB_BandSolver_AddMaterial(lua_State *L){
+	return 0;
 }
 static void Lua_SPB_Lib_Init(lua_State *L){
 	static const struct luaL_Reg Lua_SPB_lib[] = {

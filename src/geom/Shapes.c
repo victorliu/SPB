@@ -4,6 +4,9 @@
 #include <math.h>
 #include "lp_solve.h"
 
+static double inline hypot2(double a, double b){
+	return hypot(a,b);
+}
 static double inline hypot22(double a, double b){
 	return a*a+b*b;
 }
