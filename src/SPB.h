@@ -24,6 +24,13 @@
 #ifndef _SPB_H_INCLUDED_
 #define _SPB_H_INCLUDED_
 
+#if __STDC_VERSION__ >= 199901L /* Use C99 complex type */
+#include <complex.h>
+typedef _Complex double* SPB_complex_ptr;
+#else
+typedef double* SPB_complex_ptr;
+#endif
+
 typedef struct tag_SPB_BandSolver SPB_BandSolver;
 
 SPB_BandSolver* SPB_BandSolver_New(int dim, int pol, double *Lr);
@@ -50,8 +57,8 @@ int SPB_BandSolver_SetResolution(SPB_BandSolver *S, int *res);
 int SPB_BandSolver_SetTargetFrequency(SPB_BandSolver *S, double freq);
 int SPB_BandSolver_SetTargetFrequencyRange(SPB_BandSolver *S, double freq0, double freq1);
 
-int SPB_BandSolver_GetFrequencies(SPB_BandSolver *S, int *n, double *z);
+int SPB_BandSolver_GetFrequencies(SPB_BandSolver *S, int *n, SPB_complex_ptr z);
 int SPB_BandSolver_GetNumFrequencies(SPB_BandSolver *S);
-int SPB_BandSolver_GetBand(SPB_BandSolver *S, int n, double *z);
+int SPB_BandSolver_GetBand(SPB_BandSolver *S, int n, SPB_complex_ptr z);
 
 #endif /* _SPB_H_INCLUDED_ */
