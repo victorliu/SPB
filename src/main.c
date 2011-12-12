@@ -103,7 +103,7 @@ static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 	int numbands = 0;
 	double targ[2];
 	double tol;
-	double res[3];
+	int res[3];
 	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
 	int dim = SPB_BandSolver_GetDimension(S);
 	luaarg_argspec args[] = {
@@ -143,7 +143,6 @@ static int Lua_SPB_BandSolver_AddMaterial(lua_State *L){
 	SPB_ConstitutiveTensor eps;
 	double eps_inf[18];
 	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
-	int dim = SPB_BandSolver_GetDimension(S);
 	luaarg_argspec args[] = {
 		{"Name", luaarg_type_STRING, 0, &name},
 		{"EpsilonInf", luaarg_type_COMPLEX_CONSTITUTIVE_TENSOR3X3, 0, &eps_inf[0]},
@@ -162,7 +161,6 @@ static int Lua_SPB_BandSolver_AddMaterialLorentzPole(lua_State *L){
 	char *name;
 	SPB_LorentzPole pole;
 	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
-	int dim = SPB_BandSolver_GetDimension(S);
 	luaarg_argspec args[] = {
 		{"Material", luaarg_type_STRING, 0, &name        },
 		{"Omega0"  , luaarg_type_DOUBLE, 0, &pole.omega_0},
@@ -191,6 +189,9 @@ static int Lua_SPB_BandSolver_SetRectangle(lua_State *L){
 		{"Angle"     , luaarg_type_DOUBLE     , 1, &angle    },
 		{NULL, 0, 0, NULL}
 	};
+	
+	luaL_argcheck(L, 2 == dim, 1, "BandSolver dimension must be 2");
+	
 	luaarg_parse(L, 2, args);
 	
 	SPB_BandSolver_AddRectangle(S, name, center, hw, angle);
