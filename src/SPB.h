@@ -66,6 +66,11 @@ int SPB_BandSolver_AddRectangle(SPB_BandSolver *S,
 	double halfwidth[2],
 	double angle);
 
+int SPB_BandSolver_OutputEpsilon(SPB_BandSolver *S,
+	int *res,
+	const char *filename,
+	const char *format);
+
 int SPB_BandSolver_SetNumWanted(SPB_BandSolver *S, int n);
 int SPB_BandSolver_SetTolerance(SPB_BandSolver *S, double tol);
 int SPB_BandSolver_SetResolution(SPB_BandSolver *S, int *res);

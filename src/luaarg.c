@@ -234,6 +234,115 @@ void luaarg_handler_int_mat(lua_State *L, int index, void *val){
 	}
 }
 
+void luaarg_handler_complex_constitutive_tensor3x3(lua_State *L, int index, void *val){
+	int i, j, k;
+	double *v = (double*)val;
+	memset(v, 0, sizeof(double)*2*3*3);
+	if(lua_isnumber(L, index)){
+		v[0+(0+0*3)*2] = lua_tonumber(L, index);
+		v[0+(1+1*3)*2] = v[0+(0+0*3)*2];
+		v[0+(2+2*3)*2] = v[0+(0+0*3)*2];
+	}else if(lua_istable(L, index)){
+		const int len1 = lua_objlen(L, index);
+		if(2 == len1){
+			lua_pushinteger(L, 1);
+			lua_gettable(L, -2);
+			v[0+(0+0*3)*2] = lua_tonumber(L, -1);
+			lua_pop(L, 1);
+			
+			lua_pushinteger(L, 2);
+			lua_gettable(L, -2);
+			v[1+(0+0*3)*2] = lua_tonumber(L, -1);
+			lua_pop(L, 1);
+			
+			v[0+(1+1*3)*2] = v[0+(0+0*3)*2];
+			v[1+(1+1*3)*2] = v[1+(0+0*3)*2];
+			v[0+(2+2*3)*2] = v[0+(0+0*3)*2];
+			v[1+(2+2*3)*2] = v[1+(0+0*3)*2];
+		}else if(3 == len1){
+			int isreal;
+			int isdiag;
+			lua_pushinteger(L, 1);
+			lua_gettable(L, -2);
+			if(lua_isnumber(L, -1)){
+				isreal = 1;
+				isdiag = 1;
+			}else if(lua_istable(L, -1)){
+				int len2 = lua_objlen(L, -1);
+				if(2 == len2){
+					isreal = 0;
+					isdiag = 1;
+				}else if(3 == len2){
+					lua_pushinteger(L, 1);
+					lua_gettable(L, -2);
+					if(lua_isnumber(L, -1)){
+						isreal = 1;
+						isdiag = 0;
+					}else{
+						isreal = 0;
+						isdiag = 0;
+					}
+					lua_pop(L, 1);
+				}else{
+					luaL_error(L, "Expected 3x3 complex constitutive tensor\n");
+				}
+			}else{
+				luaL_error(L, "Expected 3x3 complex constitutive tensor\n");
+			}
+			lua_pop(L, 1);
+			
+			if(isdiag){ // diagonal and real
+				for(i = 0; i < 3; ++i){
+					lua_pushinteger(L, i+1);
+					lua_gettable(L, -2);
+					if(isreal){
+						v[0+(i+i*3)*2] = luaL_checknumber(L, -1);
+					}else{
+						if(!lua_istable(L, -1) || 2 != lua_objlen(L, -1)){
+							luaL_error(L, "Expected 3x3 complex constitutive tensor\n");
+						}
+						for(j = 0; j < 2; ++j){
+							lua_pushinteger(L, j+1);
+							lua_gettable(L, -2);
+							v[j+(i+i*3)*2] = luaL_checknumber(L, -1);
+							lua_pop(L, 1);
+						}
+					}
+					lua_pop(L, 1);
+				}
+			}else{ // tensor, or complex diagonal
+				for(i = 0; i < 3; ++i){
+					lua_pushinteger(L, i+1);
+					lua_gettable(L, -2);
+					if(!lua_istable(L, -1) || 3 != lua_objlen(L, -1)){
+						luaL_error(L, "Expected 3x3 complex constitutive tensor\n");
+					}
+					for(j = 0; j < 3; ++j){
+						lua_pushinteger(L, i+1);
+						lua_gettable(L, -2);
+						if(isreal){
+							v[0+(i+j*3)*2] = luaL_checknumber(L, -1);
+						}else{
+							if(!lua_istable(L, -1) || 2 != lua_objlen(L, -1)){
+								luaL_error(L, "Expected 3x3 complex constitutive tensor\n");
+							}
+							for(k = 0; k < 2; ++k){
+								lua_pushinteger(L, k+1);
+								lua_gettable(L, -2);
+								v[k+(i+j*3)*2] = luaL_checknumber(L, -1);
+								lua_pop(L, 1);
+							}
+						}
+						lua_pop(L, 1);
+					}
+					lua_pop(L, 1);
+				}
+			}
+		}else{
+			luaL_error(L, "Expected 3x3 complex constitutive tensor\n");
+		}
+	}
+}
 
 void luaarg_parse(lua_State *L, int index, const luaarg_argspec *argspec){
 	static const luaarg_handler handler[] = {
@@ -250,6 +359,7 @@ void luaarg_parse(lua_State *L, int index, const luaarg_argspec *argspec){
 		&luaarg_handler_int_mat2,
 		&luaarg_handler_int_mat3,
 		&luaarg_handler_complex,
+		&luaarg_handler_complex_constitutive_tensor3x3,
 		&luaarg_handler_double_vec,
 		&luaarg_handler_double_mat,
 		&luaarg_handler_int_vec,

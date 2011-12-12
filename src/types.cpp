@@ -106,12 +106,11 @@ SPB::ConstitutiveTensor::ConstitutiveTensor(const ConstitutiveTensor &et):
 
 SPB::Material::Material(
 	const std::string &name,
-	const ConstitutiveTensor &eps,
-	const std::vector<LorentzPole> &poles
+	const ConstitutiveTensor &eps
 ):
 	name(name),
 	eps_inf(eps),
-	poles(poles)
+	poles()
 {
 }
 SPB::Material::Material(const Material &mat):

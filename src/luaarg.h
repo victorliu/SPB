@@ -19,11 +19,12 @@
 #define luaarg_type_INT_MAT2X2 10
 #define luaarg_type_INT_MAT3X3 11
 #define luaarg_type_COMPLEX    12
+#define luaarg_type_COMPLEX_CONSTITUTIVE_TENSOR3X3 13
 /* variable size arrays */
-#define luaarg_type_DOUBLE_VEC 13
-#define luaarg_type_DOUBLE_MAT 14
-#define luaarg_type_INT_VEC 15
-#define luaarg_type_INT_MAT 16
+#define luaarg_type_DOUBLE_VEC 14
+#define luaarg_type_DOUBLE_MAT 15
+#define luaarg_type_INT_VEC 16
+#define luaarg_type_INT_MAT 17
 
 typedef struct tag_luaarg_double_vector{
 	int n;

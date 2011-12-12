@@ -68,8 +68,7 @@ struct Material{
 	std::vector<LorentzPole> poles;
 	Material(
 		const std::string &name,
-		const ConstitutiveTensor &eps,
-		const std::vector<LorentzPole> &poles
+		const ConstitutiveTensor &eps
 	);
 	Material(const Material &mat);
 };
