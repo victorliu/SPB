@@ -9,6 +9,8 @@ CFLAGS = $(FLAGS)
 CXXFLAGS = $(FLAGS)
 LDFLAGS = -m32 -O0 -ggdb
 
+RNP_INC = -I/d/dev/cpp/rnp/inc
+
 # Lua directories:
 LUA_INC = -I/c/Program\ Files\ \(x86\)/Lua/5.1/include
 LUA_LIB = /d/dev/libs/output/lua-5.1.4/i386/liblua.a
