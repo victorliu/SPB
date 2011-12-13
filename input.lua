@@ -8,9 +8,15 @@ S = SPB.NewBandSolver{
 
 S:SetOptions{
 	NumBands = 10,
-	Resolution = {20,20},
+	Resolution = {10,10},
 	TargetFrequency = 0.1,
-	Tolerance = 1e-7
+	Tolerance = 1e-7,
+	Verbosity = 0
+}
+
+S:AddMaterial{
+	Name = 'Si',
+	EpsilonInf = {12,0}
 }
 
 S:AddMaterial{
@@ -19,10 +25,11 @@ S:AddMaterial{
 }
 S:AddMaterialLorentzPole{
 	Material = 'Metal',
-	Omega0 = 1,
+	Omega0 = 0.5,
 	Gamma = 0,
-	OmegaP = 0
+	OmegaP = 1
 }
+
 
 S:SetRectangle{
 	Material = 'Metal',
@@ -30,17 +37,26 @@ S:SetRectangle{
 	Halfwidths = {0.25,0.25},
 	Angle = 0
 }
-
+--[[
 S:OutputEpsilon{
 	Resolution = {32,32},
 	Filename = "epsilon.txt",
 	Format = 'gnuplot'
 }
---[[
-S:SolveK{0,0}
-
-print(unpack(S:GetFrequencies()));
 ]]
+for kx = 0,0.5,0.01 do
+	S:SolveK{kx,0}
+
+	io.stdout:write(kx)
+	for i,freq in ipairs(S:GetFrequencies()) do
+		if freq[1] >= 0 then
+			io.stdout:write('\t' .. freq[1])
+		end
+	end
+	io.stdout:write('\n')
+	io.stdout:flush()
+end
+
 --[[
 band1 = S:GetBand(1);
 band2 = S:GetBand(2);

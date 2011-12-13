@@ -57,7 +57,6 @@ int SPB::EigenSolver_IRA::Solve(){
 	SetNumWanted(k);
 	SPB::complex_t *w = data;
 	SPB::complex_t *v = w+k;
-	std::cout << "n = " << n << ", k = " << k << ", ncv = " << impl->n_arnoldi << std::endl;
 	int nconv = RNP::IRA::ShiftInvert(
 		n, target, &op_, &bv_,
 		k, impl->n_arnoldi, &RNP::IRA::LargestMagnitude,

@@ -28,6 +28,7 @@
 #if __STDC_VERSION__ >= 199901L /* Use C99 complex type */
 #include <complex.h>
 typedef _Complex double* SPB_complex_ptr;
+# define SPB_USING_C99_COMPLEX
 #else
 typedef double* SPB_complex_ptr;
 #endif
@@ -76,6 +77,7 @@ int SPB_BandSolver_SetTolerance(SPB_BandSolver *S, double tol);
 int SPB_BandSolver_SetResolution(SPB_BandSolver *S, int *res);
 int SPB_BandSolver_SetTargetFrequency(SPB_BandSolver *S, double freq);
 int SPB_BandSolver_SetTargetFrequencyRange(SPB_BandSolver *S, double freq0, double freq1);
+int SPB_BandSolver_SetVerbosity(SPB_BandSolver *S, int v);
 
 int SPB_BandSolver_SolveK(SPB_BandSolver *S, double *k);
 int SPB_BandSolver_GetFrequencies(const SPB_BandSolver *S, int *n, SPB_complex_ptr z);

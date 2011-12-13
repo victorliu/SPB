@@ -249,6 +249,7 @@ public:
 	void SetVerbosity(int verb){ solver->SetVerbosity(verbosity = verb); }
 	
 	void AddMaterial(const Material &mat){ matmap[mat.name] = material.size(); material.push_back(mat); }
+	int AddMaterialLorentzPole(const char *name, const LorentzPole &pole);
 	int AddShape(const Shape &s, const std::string &matname);
 	
 	virtual int OutputEpsilon(int *res, const char *filename, const char *format) const = 0;

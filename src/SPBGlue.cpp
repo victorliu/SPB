@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <cstring>
 extern "C" {
 #include "SPB.h"
 }
@@ -69,6 +70,7 @@ int SPB_BandSolver_AddMaterial(SPB_BandSolver *S, const char *name, const SPB_Co
 		eps_inf.type = SPB::ConstitutiveTensor::TENSOR;
 		break;
 	}
+	memcpy(eps_inf.value, eps->value, sizeof(SPB::complex_t) * 9);
 	S->S->AddMaterial(SPB::Material(name, eps_inf));
 	return 0;
 }
@@ -82,7 +84,13 @@ int SPB_BandSolver_Material_AddLorentzPole(SPB_BandSolver *S, const char *name, 
 	if(NULL == S){ return -1; }
 	if(NULL == name){ return -2; }
 	if(NULL == pole){ return -3; }
-	return -1;
+	SPB::LorentzPole p;
+	p.omega_0 = pole->omega_0;
+	p.omega_p = pole->omega_p;
+	p.Gamma = pole->Gamma;
+	S->S->AddMaterialLorentzPole(name, p);
+	
+	return 0;
 }
 int SPB_BandSolver_RemoveMaterial(SPB_BandSolver *S, const char *name){
 	if(NULL == S){ return -1; }
@@ -167,21 +175,64 @@ int SPB_BandSolver_SetTargetFrequency(SPB_BandSolver *S, double freq){
 int SPB_BandSolver_SetTargetFrequencyRange(SPB_BandSolver *S, double freq0, double freq1){
 	return -1;
 }
-
+int SPB_BandSolver_SetVerbosity(SPB_BandSolver *S, int v){
+	if(NULL == S){ return -1; }
+	S->S->SetVerbosity(v);
+	return 0;
+}
 int SPB_BandSolver_SolveK(SPB_BandSolver *S, double *k){
 	if(NULL == S){ return -1; }
 	if(NULL == k){ return -2; }
+	S->S->SolveK(k);
+	return 0;
+}
+
+static int freq_sorter(const void *a, const void *b){
+	double diff;
+#ifdef SPB_USING_C99_COMPLEX
+	double complex *za = (double complex*)a;
+	double complex *zb = (double complex*)b;
+	diff = creal(*za) - creal(*zb);
+#else
+	double *ra = (double*)a;
+	double *rb = (double*)b;
+	diff = *ra - *rb;
+#endif
+	if(0 == diff){ return 0; }
+	if(diff > 0){ return 1; }
 	return -1;
 }
 int SPB_BandSolver_GetFrequencies(const SPB_BandSolver *S, int *n, SPB_complex_ptr z){
 	if(NULL == S){ return -1; }
 	if(NULL == n){ return -2; }
 	if(NULL == z){ return -3; }
-	return -1;
+	std::vector<SPB::complex_t> f = S->S->GetFrequencies();
+	size_t capacity = *n;
+	if(f.size() < capacity){
+		*n = f.size();
+	}
+	for(size_t i = 0; i < *n; ++i){
+#ifdef SPB_USING_C99_COMPLEX
+		z[i] = f[i].real() + f[i].imag() * _Complex_I;
+#else
+		z[2*i+0] = f[i].real();
+		z[2*i+1] = f[i].imag();
+#endif
+	}
+	qsort(z, *n,
+#ifdef SPB_USING_C99_COMPLEX
+		sizeof(double complex),
+#else
+		2*sizeof(double),
+#endif
+		&freq_sorter
+	);
+	
+	return 0;
 }
 int SPB_BandSolver_GetNumFrequencies(const SPB_BandSolver *S){
 	if(NULL == S){ return -1; }
-	return -1;
+	return S->S->GetFrequencies().size();
 }
 int SPB_BandSolver_GetBand(const SPB_BandSolver *S, int n, SPB_complex_ptr z){
 	if(NULL == S){ return -1; }

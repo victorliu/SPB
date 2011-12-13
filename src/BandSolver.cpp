@@ -46,3 +46,12 @@ void SPB::BandSolver::SetResolution(size_t *N){
 	res[2] = ((2 == dim) ? 1 : N[2]);
 }
 
+int SPB::BandSolver::AddMaterialLorentzPole(const char *name, const LorentzPole &pole){
+	std::map<std::string,size_t>::iterator i = matmap.find(name);
+	if(matmap.end() != i){
+		material[i->second].poles.push_back(pole);
+	}else{
+		return -1;
+	}
+}
+

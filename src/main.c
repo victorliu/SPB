@@ -104,6 +104,7 @@ static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 	double targ[2];
 	double tol;
 	int res[3];
+	int verb;
 	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
 	int dim = SPB_BandSolver_GetDimension(S);
 	luaarg_argspec args[] = {
@@ -111,6 +112,7 @@ static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 		{"NumBands"       , luaarg_type_INT       , 1, &numbands},
 		{"TargetFrequency", luaarg_type_COMPLEX   , 1, &targ[0]},
 		{"Tolerance"      , luaarg_type_DOUBLE    , 1, &tol},
+		{"Verbosity"      , luaarg_type_INT       , 1, &verb},
 		{NULL, 0, 0, NULL}
 	};
 	if(2 == dim){
@@ -134,6 +136,7 @@ static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 	SPB_BandSolver_SetTolerance(S, tol);
 	SPB_BandSolver_SetResolution(S, res);
 	SPB_BandSolver_SetTargetFrequency(S, targ[0]);
+	SPB_BandSolver_SetVerbosity(S, verb);
 	
 	return 0;
 }
@@ -222,6 +225,65 @@ static int Lua_SPB_BandSolver_OutputEpsilon(lua_State *L){
 	free(filename);
 	return 0;
 }
+static int Lua_SPB_BandSolver_SolveK(lua_State *L){
+	int i;
+	double k[3];
+	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
+	int dim = SPB_BandSolver_GetDimension(S);
+	luaL_argcheck(L, lua_istable(L, 2) && dim == lua_objlen(L, 2), 2, "Expected k-vector");
+	for(i = 0; i < dim; ++i){
+		lua_pushinteger(L, i+1);
+		lua_gettable(L, -2);
+		k[i] = luaL_checknumber(L, -1);
+		lua_pop(L, 1);
+	}
+	SPB_BandSolver_SolveK(S, k);
+	return 0;
+}
+static int Lua_SPB_BandSolver_GetFrequencies(lua_State *L){
+	int i, n;
+	SPB_complex_ptr z;
+	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
+	n = SPB_BandSolver_GetNumFrequencies(S);
+	if(n <= 0){
+		lua_createtable(L, 0,0);
+		return 1;
+	}
+#ifdef SPB_USING_C99_COMPLEX
+	z = (SPB_complex_ptr)malloc(sizeof(double complex) * n);
+#else
+	z = (double*)malloc(sizeof(double) * 2*n);
+#endif	
+	SPB_BandSolver_GetFrequencies(S, &n, z);
+	if(0 == n){ return 0; }
+	
+	lua_createtable(L, n, 0);
+	for(i = 0; i < n; ++i){
+		lua_pushinteger(L, i+1);
+		lua_createtable(L, 2, 0);
+#ifdef SPB_USING_C99_COMPLEX
+		lua_pushinteger(L, 1);
+		lua_pushnumber(L, creal(z[i]));
+		lua_settable(L, -3);
+		
+		lua_pushinteger(L, 2);
+		lua_pushnumber(L, cimag(z[i]));
+		lua_settable(L, -3);
+#else
+		lua_pushinteger(L, 1);
+		lua_pushnumber(L, z[2*i+0]);
+		lua_settable(L, -3);
+		
+		lua_pushinteger(L, 2);
+		lua_pushnumber(L, z[2*i+1]);
+		lua_settable(L, -3);
+#endif
+		
+		lua_settable(L, -3);
+	}
+	free(z);
+	return 1;
+}
 static void Lua_SPB_Lib_Init(lua_State *L){
 	static const struct luaL_Reg Lua_SPB_lib[] = {
 		{"NewBandSolver", Lua_SPB_NewBandSolver},
@@ -233,6 +295,8 @@ static void Lua_SPB_Lib_Init(lua_State *L){
 		{"AddMaterialLorentzPole", Lua_SPB_BandSolver_AddMaterialLorentzPole},
 		{"SetRectangle", Lua_SPB_BandSolver_SetRectangle},
 		{"OutputEpsilon", Lua_SPB_BandSolver_OutputEpsilon},
+		{"SolveK", Lua_SPB_BandSolver_SolveK},
+		{"GetFrequencies", Lua_SPB_BandSolver_GetFrequencies},
 		{NULL, NULL}
 	};
 	
