@@ -340,6 +340,9 @@ int SPB::BandSolver_Ez::InvalidateByStructure(){
 int SPB::BandSolver_Ez::MakeASymbolic(){
 	const size_t Ngrid = res[0] * res[1];
 	
+	const double klen = hypot(last_k[0], last_k[1]);
+	const bool AtGamma = (klen < std::numeric_limits<double>::epsilon() * L.CharacteristicKLength());
+	
 	size_t Annz = 0;
 	
 	size_t extra_constraints = 0;
@@ -409,16 +412,18 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 				}
 			}
 		}
-		size_t last_offset = extra_constraints; // should be 0
-		for(std::map<size_t,size_t>::iterator i = used_mat_poles.begin(); i != used_mat_poles.end(); ++i){
-			size_t n_poles = i->second;
-			i->second = last_offset;
-			extra_constraints += n_poles;
-			Annz += n_poles * (mat_counts[i->first]+1);
-#ifndef ONLY_LOWER
-			Annz += n_poles * mat_counts[i->first];
-#endif
-			last_offset = n_poles;
+		if(AtGamma){
+			size_t last_offset = extra_constraints; // should be 0
+			for(std::map<size_t,size_t>::iterator i = used_mat_poles.begin(); i != used_mat_poles.end(); ++i){
+				size_t n_poles = i->second;
+				i->second = last_offset;
+				extra_constraints += n_poles;
+				Annz += n_poles * (mat_counts[i->first]+1);
+	#ifndef ONLY_LOWER
+				Annz += n_poles * mat_counts[i->first];
+	#endif
+				last_offset = n_poles;
+			}
 		}
 		extra_constraint_start = 4*Ngrid + next_index;
 		
@@ -431,12 +436,11 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 			Annz += 1*Ngrid;
 #endif*/
 
-		const double klen = hypot(last_k[0], last_k[1]);
-		if(klen < std::numeric_limits<double>::epsilon() * L.CharacteristicKLength()){
-			EH_constraints += 2;
-			Annz += 2*(Ngrid + 1);
+		if(AtGamma){
+			EH_constraints += 3;
+			Annz += 3*(Ngrid + 1);
 #ifndef ONLY_LOWER
-			Annz += 2*Ngrid;
+			Annz += 3*Ngrid;
 #endif
 		}
 		
@@ -718,7 +722,7 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 //std::cerr << ", ending Aind = " << Aind << std::endl;
 			}
 		}
-		{
+		if(extra_constraints){
 			size_t col = extra_constraint_start;
 			for(std::map<size_t,size_t>::const_iterator m = used_mat_poles.begin(); m != used_mat_poles.end(); ++m){
 				const Material &mat = material[m->first];
@@ -747,8 +751,8 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 				}
 			}
 		}
-		std::cerr << "EH_constraints = " << EH_constraints << " extra_constraints = " << extra_constraints << std::endl;
-		std::cerr << "EH_constraint_start = " << EH_constraint_start << " extra_constraint_start = " << extra_constraint_start << std::endl;
+		//std::cerr << "EH_constraints = " << EH_constraints << " extra_constraints = " << extra_constraints << std::endl;
+		//std::cerr << "EH_constraint_start = " << EH_constraint_start << " extra_constraint_start = " << extra_constraint_start << std::endl;
 		if(EH_constraints > 0){
 			size_t col = EH_constraint_start+0;
 			ASETCOL(col,Aind);
@@ -796,7 +800,7 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 	}
 	B = new sparse_t(N,N, Bmap);
 	Atmp = new sparse_t(N,N, Amap);
-	if(1){
+	if(0){
 		std::cout << "A="; RNP::Sparse::PrintSparseMatrix(*Atmp) << ";" << std::endl;
 		std::cout << "B="; RNP::Sparse::PrintSparseMatrix(*B) << ";" << std::endl;
 		exit(0);
@@ -836,7 +840,7 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 		superlu_data.perm_c, superlu_data.perm_r,
 		&superlu_data.L, &superlu_data.U,
 		&superlu_data.stat, &info);
-	std::cout << "info = " << info << std::endl;
+	//std::cout << "info = " << info << std::endl;
 	valid_A_numeric = true;
 	return 0;
 }
