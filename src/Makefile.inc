@@ -29,12 +29,12 @@ LAPACK_LIBS = /d/dev/libs/output/lapack-3.2.2-mingw32-vanilla/lapack_mingw32.a /
 FFTW3_INC = -I/d/dev/libs/output/fftw3
 FFTW3_LIBS = -L/d/dev/libs/output/fftw3 -llibfftw3-3
 
-# CHOLMOD directories
-CHOLMOD_INC = -I/d/dev/libs/output/numerical_mingw32/cholmod
-CHOLMOD_LIBS = -L/d/dev/libs/output/numerical_mingw32 -lcholmod -lamd -lcamd -lcolamd -lccolamd
+# SLU directories
+SLU_INC = -I/d/dev/libs/output/SuperLU/include
+SLU_LIB = /d/dev/libs/output/SuperLU/lib/libsuperlu_4.3.a
 
 #DEBUG_LIBS = /d/dev/libs/output/duma/libduma.a
 
 # All needed libraries
-LIBS = $(LUA_LIB) $(FFTW3_LIBS) $(CHOLMOD_LIBS) $(PTHREAD_LIB) $(LAPACK_LIBS) $(DEBUG_LIB)
+LIBS = $(LUA_LIB) $(SLU_LIB) $(LAPACK_LIBS) $(DEBUG_LIBS)
 

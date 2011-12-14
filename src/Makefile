@@ -4,7 +4,7 @@ SUBDIRS = geom rnp
 OBJLIBS = geom/libSPBgeom.a rnp/libSPBrnp.a
 
 CFLAGS += -Igeom -Irnp
-CXXFLAGS += -Igeom -Irnp
+CXXFLAGS += -Igeom -Irnp $(RNP_INC) $(SLU_INC)
 
 SPB: $(SUBDIRS) \
 	z-main.o \
@@ -13,9 +13,7 @@ SPB: $(SUBDIRS) \
 	z-util.o \
 	z-types.o \
 	z-BandSolver.o \
-	z-BandSolver_Ez.o \
-	z-EigenSolver.o \
-	z-EigenSolver_IRA.o
+	z-BandSolver_Ez.o
 	$(CXX) $(LDFLAGS) z-*.o $(OBJLIBS) $(LIBS) -o SPB
 
 z-main.o: main.c SPB.h luaarg.h
@@ -31,11 +29,11 @@ z-util.o: util.cpp util.h
 z-BandSolver.o: BandSolver.cpp SPB.hpp
 	$(CXX) $(CXXFLAGS) -c BandSolver.cpp -o z-BandSolver.o
 z-BandSolver_Ez.o: BandSolver_Ez.cpp SPB.hpp
-	$(CXX) $(CXXFLAGS) -c $(RNP_INC) $(FFTW3_INC) BandSolver_Ez.cpp -o z-BandSolver_Ez.o
+	$(CXX) $(CXXFLAGS) -c BandSolver_Ez.cpp -o z-BandSolver_Ez.o
 z-EigenSolver.o: EigenSolver.cpp SPB.hpp
 	$(CXX) $(CXXFLAGS) -c EigenSolver.cpp -o z-EigenSolver.o
 z-EigenSolver_IRA.o: EigenSolver_IRA.cpp SPB.hpp
-	$(CXX) $(CXXFLAGS) -c $(RNP_INC) EigenSolver_IRA.cpp -o z-EigenSolver_IRA.o
+	$(CXX) $(CXXFLAGS) -c EigenSolver_IRA.cpp -o z-EigenSolver_IRA.o
 
 all:
 	SPB

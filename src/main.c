@@ -322,7 +322,7 @@ int main(int argc, char *argv[]){
 #ifdef HAVE_MPI
 	MPI_Init(&argc, &argv);
 #endif
-	
+
 	opterr = 0;
 	while((c = getopt(argc, argv, "a:ht:v")) != -1){
 		switch(c){

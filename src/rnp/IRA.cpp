@@ -2896,7 +2896,7 @@ void zneupd_(bool rvec, char howmny, bool *select,
 						if (select[k]) {
 							// Swap the K-th eigenvalue to position KS.
 							if (k != ks) {
-								ztrexc_(ncv, work_uptri, ldh, work_invsub, ldq, k, ks);
+								ztrexc_(ncv, work_uptri, ldh, work_invsub, ldq, k+1, ks+1);
 							}
 							++ks;
 						}

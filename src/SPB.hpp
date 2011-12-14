@@ -5,6 +5,10 @@
 #include <vector>
 #include <map>
 #include <complex>
+#include <Sparse.h>
+#include <slu_zdefs.h>
+#include <slu_util.h>
+#include <supermatrix.h>
 #include "SPB.h"
 extern "C" {
 #include "ShapeSet.h"
@@ -167,59 +171,6 @@ public:
 //	virtual void ShiftOp(const complex_t &shift, const complex_t *from, complex_t *to) const = 0;
 };
 
-class EigenSolver{
-protected:
-	complex_t *data;
-	const EigenOperator *op;
-	
-	size_t n_wanted;
-	complex_t target;
-	int want_interval;
-	complex_t target2; // upper end of interval if want_interval == 1
-	double tol;
-	int verbosity;
-public:
-	EigenSolver(const EigenOperator *Op);
-	virtual ~EigenSolver();
-	virtual int Solve() = 0;
-	virtual size_t GetSolutionSize() const = 0;
-	virtual complex_t *GetEigenvalues() const = 0;
-	virtual complex_t *GetEigenvectors() const = 0;
-	
-	virtual void SetNumWanted(size_t nwanted){ n_wanted = nwanted; }
-	void SetTarget(const complex_t &targ){ target = targ; }
-	void SetTolerance(double tolerance){ tol = tolerance; }
-	void SetVerbosity(int verb){ verbosity = verb; }
-};
-
-class EigenSolver_JDQZ : public EigenSolver{
-	class Impl;
-	Impl *impl;
-public:
-	EigenSolver_JDQZ(const EigenOperator *Op);
-	~EigenSolver_JDQZ();
-	int Solve();
-	size_t GetSolutionSize() const;
-	complex_t *GetEigenvalues() const;
-	complex_t *GetEigenvectors() const;
-	
-	void SetNumWanted(size_t nwanted);
-};
-
-class EigenSolver_IRA : public EigenSolver{
-	class Impl;
-	Impl *impl;
-public:
-	EigenSolver_IRA(const EigenOperator *Op);
-	~EigenSolver_IRA();
-	int Solve();
-	size_t GetSolutionSize() const;
-	complex_t *GetEigenvalues() const;
-	complex_t *GetEigenvectors() const;
-	
-	void SetNumWanted(size_t nwanted);
-};
-
 class BandSolver : public EigenOperator{
 protected:
 	int dim;
@@ -237,16 +188,28 @@ protected:
 	
 	// Solution
 	double last_k[3]; // in Lk basis
-	EigenSolver *solver;
+	
+	struct{
+		complex_t *work;
+		size_t n_alloc;
+		size_t n_arnoldi;
+	} IRA_data;
+	size_t n_wanted;
+	complex_t target;
+	int want_interval;
+	complex_t target2; // upper end of interval if want_interval == 1
+	double tol;
+	
+	virtual size_t GetProblemSize() const = 0;
 public:
 	BandSolver(const Lattice &L);
 	virtual ~BandSolver();
 	
 	void SetResolution(size_t *N);
-	void SetNumBands(size_t n){ solver->SetNumWanted(n); }
-	void SetTargetFrequency(const complex_t &freq){ solver->SetTarget(freq); }
-	void SetTolerance(double tol){ solver->SetTolerance(tol); }
-	void SetVerbosity(int verb){ solver->SetVerbosity(verbosity = verb); }
+	void SetNumBands(size_t n);
+	void SetTargetFrequency(const complex_t &freq){ target = freq; }
+	void SetTolerance(double tolerance){ tol = tolerance; }
+	void SetVerbosity(int verb){ verbosity = verb; }
 	
 	void AddMaterial(const Material &mat){ matmap[mat.name] = material.size(); material.push_back(mat); }
 	int AddMaterialLorentzPole(const char *name, const LorentzPole &pole);
@@ -256,13 +219,36 @@ public:
 	
 	void ClearSolution();
 	virtual int SolveK(const double *k) = 0;
-	std::vector<complex_t> GetFrequencies() const;
+	complex_t* GetFrequencies() const;
+	size_t GetNumSolutions() const;
+	
+	int IRASolve(size_t n);
 };
 
 class BandSolver_Ez : public BandSolver{
+	typedef RNP::Sparse::TCCSMatrix<complex_t> sparse_t;
 	Lattice2 L;
-	class Impl;
-	Impl *impl;
+	
+	size_t N;
+	int *ind;
+	mutable struct{
+		SuperMatrix A, L, U;
+		superlu_options_t options;
+		SuperLUStat_t stat;
+		int *perm_c, *perm_r;
+	} superlu_data;
+	sparse_t *B, *Atmp;
+	// When structure changes, invalidate A, B, ind
+	// When K changes, symbolic A still good, need to update it
+	// When shift changes, symbolic A still good, numeric needs regenerating
+	// If ind is not NULL, we assume we have an A that is symbolically factored, and B is valid
+	bool valid_A_numeric;
+	complex_t last_shift;
+	
+	int InvalidateByStructure();
+	int MakeASymbolic();
+	int MakeANumeric();
+	int UpdateA(const double k[2]);
 	
 	void PrintField(const std::complex<double> *x, const char *filename = NULL) const;
 protected:
@@ -273,6 +259,7 @@ protected:
 	void Randvec(complex_t *to) const;
 	void Orth(complex_t *x) const;
 	void ShiftInv(const complex_t &shift, const complex_t *from, complex_t *to) const;
+	size_t GetProblemSize() const;
 public:
 	BandSolver_Ez(double Lr[4]);
 	~BandSolver_Ez();
@@ -283,29 +270,6 @@ public:
 	
 	void Op(size_t n, const complex_t &shift, const complex_t *from, complex_t *to) const;
 	void OpForw(size_t n, const complex_t &shift, const complex_t *from, complex_t *to) const;
-};
-
-class BandSolver_Hz : public BandSolver{
-	Lattice2 L;
-	class Impl;
-	Impl *impl;
-	
-	void PrintField(const std::complex<double> *x, const char *filename = NULL) const;
-protected:
-	size_t GetSize() const;
-	void Aop(const std::complex<double> *from, std::complex<double> *to) const;
-	void Bop(const std::complex<double> *from, std::complex<double> *to) const;
-	void Precond(const std::complex<double> &alpha, const std::complex<double> &beta, const std::complex<double> *from, std::complex<double> *to) const;
-	void Randvec(std::complex<double> *x) const;
-	void Orth(complex_t *x) const;
-	void ShiftInv(const complex_t &shift, const complex_t *from, complex_t *to) const;
-public:
-	BandSolver_Hz(double Lr[4]);
-	~BandSolver_Hz();
-	
-	void SetResolution(size_t *N){ res[0] = N[0]; res[1] = N[1]; }
-	
-	int SolveK(const double *k);
 };
 
 }; // namespace SPB

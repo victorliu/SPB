@@ -9,7 +9,7 @@ S = SPB.NewBandSolver{
 S:SetOptions{
 	NumBands = 10,
 	Resolution = {10,10},
-	TargetFrequency = 0.1,
+	TargetFrequency = 1,
 	Tolerance = 1e-7,
 	Verbosity = 0
 }
@@ -32,7 +32,7 @@ S:AddMaterialLorentzPole{
 
 
 S:SetRectangle{
-	Material = 'Metal',
+	Material = 'Si',
 	Center = {0,0},
 	Halfwidths = {0.25,0.25},
 	Angle = 0
@@ -44,6 +44,7 @@ S:OutputEpsilon{
 	Format = 'gnuplot'
 }
 ]]
+
 for kx = 0,0.5,0.01 do
 	S:SolveK{kx,0}
 

@@ -206,10 +206,11 @@ int SPB_BandSolver_GetFrequencies(const SPB_BandSolver *S, int *n, SPB_complex_p
 	if(NULL == S){ return -1; }
 	if(NULL == n){ return -2; }
 	if(NULL == z){ return -3; }
-	std::vector<SPB::complex_t> f = S->S->GetFrequencies();
-	size_t capacity = *n;
-	if(f.size() < capacity){
-		*n = f.size();
+	SPB::complex_t* f = S->S->GetFrequencies();
+	int capacity = *n;
+	int fsize = SPB_BandSolver_GetNumFrequencies(S);
+	if(fsize < capacity){
+		*n = fsize;
 	}
 	for(size_t i = 0; i < *n; ++i){
 #ifdef SPB_USING_C99_COMPLEX
@@ -232,7 +233,7 @@ int SPB_BandSolver_GetFrequencies(const SPB_BandSolver *S, int *n, SPB_complex_p
 }
 int SPB_BandSolver_GetNumFrequencies(const SPB_BandSolver *S){
 	if(NULL == S){ return -1; }
-	return S->S->GetFrequencies().size();
+	return S->S->GetNumSolutions();
 }
 int SPB_BandSolver_GetBand(const SPB_BandSolver *S, int n, SPB_complex_ptr z){
 	if(NULL == S){ return -1; }
