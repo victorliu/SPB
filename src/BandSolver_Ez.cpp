@@ -168,16 +168,16 @@ SPB::BandSolver_Ez::BandSolver_Ez(double Lr[4]):BandSolver(Lattice2(Lr)),L(Lr),
 SPB::BandSolver_Ez::~BandSolver_Ez(){
 	free(ind);
 	// delete A
-    StatFree(&superlu_data.stat);
     if(valid_A_numeric){
-		if(NULL != superlu_data.perm_r){ free(superlu_data.perm_r); }
-		if(NULL != superlu_data.perm_c){ free(superlu_data.perm_c); }
+		if(NULL != superlu_data.perm_r){ SUPERLU_FREE(superlu_data.perm_r); }
+		if(NULL != superlu_data.perm_c){ SUPERLU_FREE(superlu_data.perm_c); }
 		Destroy_CompCol_Matrix(&superlu_data.A);
-		Destroy_CompCol_Matrix(&superlu_data.L);
+		Destroy_SuperNode_Matrix(&superlu_data.L);
 		Destroy_CompCol_Matrix(&superlu_data.U);
 	}
 	if(NULL != B){ delete B; }
 	if(NULL != Atmp){ delete Atmp; }
+    StatFree(&superlu_data.stat);
 }
 
 size_t SPB::BandSolver_Ez::GetSize() const{
@@ -195,7 +195,7 @@ void SPB::BandSolver_Ez::PrintField(const std::complex<double> *y, const char *f
 	if(NULL != filename){
 		out = new std::ofstream(filename);
 	}
-	
+	/*
 	for(int i = 0; i < res[0]; ++i){
 		for(int j = 0; j < res[1]; ++j){
 			(*out)
@@ -211,7 +211,7 @@ void SPB::BandSolver_Ez::PrintField(const std::complex<double> *y, const char *f
 				 << "\n";
 		}
 		(*out) << "\n";
-	}
+	}*/
 	if(NULL != filename){
 		delete out;
 	}
@@ -281,8 +281,7 @@ int SPB::BandSolver_Ez::OutputEpsilon(int *res, const char *filename, const char
 void
 zgsfact(superlu_options_t *options, SuperMatrix *A, int *perm_c, int *perm_r,
       SuperMatrix *L, SuperMatrix *U,
-      SuperLUStat_t *stat, int *info )
-{
+      SuperLUStat_t *stat, int *info ){
     SuperMatrix AC; /* Matrix postmultiplied by Pc */
     int      lwork = 0, *etree, i;
     
@@ -292,7 +291,6 @@ zgsfact(superlu_options_t *options, SuperMatrix *A, int *perm_c, int *perm_r,
     int      permc_spec;
 
     *info = 0;
-
 
     /*
      * Get column permutation vector perm_c[], according to permc_spec:
@@ -320,7 +318,7 @@ zgsfact(superlu_options_t *options, SuperMatrix *A, int *perm_c, int *perm_r,
     zgstrf(options, &AC, relax, panel_size, etree,
             NULL, lwork, perm_c, perm_r, L, U, stat, info);
 
-    SUPERLU_FREE (etree);
+    SUPERLU_FREE(etree);
     Destroy_CompCol_Permuted(&AC);
 }
 
@@ -328,11 +326,11 @@ zgsfact(superlu_options_t *options, SuperMatrix *A, int *perm_c, int *perm_r,
 int SPB::BandSolver_Ez::InvalidateByStructure(){
 	if(NULL != ind){ free(ind); ind = NULL; }
 	if(valid_A_numeric){
-		if(NULL != superlu_data.perm_r){ free(superlu_data.perm_r); }
-		if(NULL != superlu_data.perm_c){ free(superlu_data.perm_c); }
-		Destroy_CompCol_Matrix(&superlu_data.A);
-		Destroy_CompCol_Matrix(&superlu_data.L);
+		if(NULL != superlu_data.perm_r){ SUPERLU_FREE(superlu_data.perm_r); }
+		if(NULL != superlu_data.perm_c){ SUPERLU_FREE(superlu_data.perm_c); }
+		Destroy_SuperNode_Matrix(&superlu_data.L);
 		Destroy_CompCol_Matrix(&superlu_data.U);
+		Destroy_CompCol_Matrix(&superlu_data.A);
 	}
 	if(NULL != B){
 		delete B;
@@ -342,8 +340,12 @@ int SPB::BandSolver_Ez::InvalidateByStructure(){
 int SPB::BandSolver_Ez::MakeASymbolic(){
 	const size_t Ngrid = res[0] * res[1];
 	
-//#define ONLY_LOWER
 	size_t Annz = 0;
+	
+	size_t extra_constraints = 0;
+	size_t EH_constraints = 0;
+	
+//#define ONLY_LOWER
 	// First block column: divH, couples to Hx and Hy twice each + diag
 	Annz += 5*Ngrid;
 	// Second block column: Ez, couples to Hx and Hy twice each + diag
@@ -360,6 +362,10 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 	ind = (int*)malloc(sizeof(int) * 2*Ngrid);
 
 	// Prepare the indexing
+	size_t extra_constraint_start = 0;
+	size_t EH_constraint_start = 0;
+	std::map<size_t,size_t> used_mat_poles;
+	std::map<size_t,size_t> mat_counts;
 	{
 		size_t next_index = 0;
 		for(int i = 0; i < res[0]; ++i){
@@ -393,21 +399,57 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 				}
 				next_index += 2*(num_poles-zero_poles);
 			
-				Annz += (num_poles-zero_poles) * 3;
+				Annz += (num_poles-zero_poles) * 4;
 #ifndef ONLY_LOWER
 				Annz += (num_poles-zero_poles) * 2;
 #endif
+				mat_counts[tag]++;
+				if(used_mat_poles[tag] == 0){
+					used_mat_poles[tag] = num_poles-zero_poles;
+				}
 			}
 		}
-		N = 4*Ngrid + next_index;
+		size_t last_offset = extra_constraints; // should be 0
+		for(std::map<size_t,size_t>::iterator i = used_mat_poles.begin(); i != used_mat_poles.end(); ++i){
+			size_t n_poles = i->second;
+			i->second = last_offset;
+			extra_constraints += n_poles;
+			Annz += n_poles * (mat_counts[i->first]+1);
+#ifndef ONLY_LOWER
+			Annz += n_poles * mat_counts[i->first];
+#endif
+			last_offset = n_poles;
+		}
+		extra_constraint_start = 4*Ngrid + next_index;
+		
+		EH_constraint_start = extra_constraint_start+extra_constraints;
+		/*
+		// for divH
+		EH_constraints += 1;
+			Annz += 1*(Ngrid + 1);
+#ifndef ONLY_LOWER
+			Annz += 1*Ngrid;
+#endif*/
+
+		const double klen = hypot(last_k[0], last_k[1]);
+		if(klen < std::numeric_limits<double>::epsilon() * L.CharacteristicKLength()){
+			EH_constraints += 2;
+			Annz += 2*(Ngrid + 1);
+#ifndef ONLY_LOWER
+			Annz += 2*Ngrid;
+#endif
+		}
+		
+		N = 4*Ngrid + next_index + extra_constraints + EH_constraints;
 	}
+//std::cout << "extra_constraints = " << extra_constraints << std::endl;
 	
 	sparse_t::entry_map_t Amap;
 	sparse_t::entry_map_t Bmap;
 	
-	complex_t *Adata = (complex_t*)malloc(sizeof(complex_t) * Annz);
-	int *rowind = (int*)malloc(sizeof(int) * Annz);
-	int *colptr = (int*)malloc(sizeof(int) * (N+1));
+	complex_t *Adata = (complex_t*)doublecomplexMalloc(Annz);
+	int *rowind = intMalloc(Annz);
+	int *colptr = intMalloc((N+1));
 	
 	{
 		size_t Aind = 0;
@@ -435,10 +477,11 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 	}while(0)
 //Amap[sparse_t::index_t((COL),(ROW))] =  std::conj(COEFF);
 #define ASETCOL(COL,IND) colptr[(COL)] = (IND)
-#define BSET(ROW,COL,COEFF) Bmap[sparse_t::index_t((ROW),(COL))] =  (COEFF);
+#define BSET(ROW,COL,COEFF) Bmap[sparse_t::index_t((ROW),(COL))] = (COEFF)
 
 		size_t row;
 		complex_t coeff;
+		
 		for(int i = 0; i < res[0]; ++i){
 			for(int j = 0; j < res[1]; ++j){
 				const size_t col = DIVH_OFF + IDX(i,j);
@@ -473,6 +516,9 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 					ASET(row,col, -coeff);
 					row = HY_OFF + IDX(i,j);
 					ASET(row,col, coeff);
+				}
+				if(EH_constraints){
+					ASET(EH_constraint_start+0,col, complex_t(1.));
 				}
 			}
 		}
@@ -541,8 +587,8 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 				const size_t col = HX_OFF + IDX(i,j);
 				BSET(col,col, 1);
 				ASETCOL(col,Aind);
-				ASET(col,col, -target);
 #ifndef ONLY_LOWER
+				
 				// divH = idr[0] * (Hx[i+1,j,k] - Hx[i,j,k]) <--
 				//      + idr[1] * (Hy[i,j+1,k] - Hy[i,j,k])
 				coeff = complex_t(0,idr[0]);
@@ -573,6 +619,10 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 					ASET(row,col, -coeff);
 				}
 #endif
+				ASET(col,col, -target);
+				if(EH_constraints > 1){
+					ASET(EH_constraint_start+1,col, complex_t(1.));
+				}
 			}
 		}
 		for(int i = 0; i < res[0]; ++i){
@@ -580,8 +630,8 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 				const size_t col = HY_OFF + IDX(i,j);
 				BSET(col,col, 1);
 				ASETCOL(col,Aind);
-				ASET(col,col, -target);
 #ifndef ONLY_LOWER
+				
 				// divH = idr[0] * (Hx[i+1,j,k] - Hx[i,j,k])
 				//      + idr[1] * (Hy[i,j+1,k] - Hy[i,j,k]) <--
 				coeff = complex_t(0,idr[1]);
@@ -612,6 +662,10 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 					ASET(row,col, coeff);
 				}
 #endif
+				ASET(col,col, -target);
+				if(EH_constraints > 1){
+					ASET(EH_constraint_start+2,col, complex_t(1.));
+				}
 			}
 		}
 		for(int i = 0; i < res[0]; ++i){
@@ -623,6 +677,7 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 				if(curmat >= 0){
 					eps_z = material[curmat].eps_inf.value[8];
 				}
+//std::cerr << "starting Aind = " << Aind;
 				if(curmat >= 0){
 					const Material &m = material[curmat];
 					const size_t np = m.poles.size();
@@ -634,32 +689,114 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 #ifndef ONLY_LOWER
 						row = EZ_OFF + IDX(i,j); // E
 						coeff = complex_t(0, m.poles[p].omega_p) * eps_z;
-						ASET(row,col, std::conj(coeff));
+						ASET(row,col, -coeff);
 #endif
 						coeff = complex_t(0,-m.poles[p].Gamma) * eps_z;
 						ASET(col,col, coeff - target);
 						BSET(col,col, 1);
 						
 						coeff = complex_t(0, m.poles[p].omega_0) * eps_z;
+						row = col0 + 2*po + 1; // P
+						ASET(row,col, coeff);
+						
 						col = col0 + 2*po + 1; // P
+						row = col0 + 2*po + 0; // V
+
 						ASETCOL(col,Aind);
 						BSET(col,col, 1);
-						row = col0 + 2*po + 0; // V
-						ASET(row,col, coeff);
 #ifndef ONLY_LOWER
-						ASET(col,row, std::conj(coeff));
+						ASET(row,col, -coeff);
 #endif
+						ASET(col,col, -target);
+						if(extra_constraints){
+//std::cerr << "used_mat_poles[curmat] = " << used_mat_poles[curmat] << ", po = " << po << std::endl;
+							ASET(extra_constraint_start+used_mat_poles[curmat]+po,col, complex_t(1.));
+						}
 						po++;
 					}
 				}
+//std::cerr << ", ending Aind = " << Aind << std::endl;
 			}
 		}
+		{
+			size_t col = extra_constraint_start;
+			for(std::map<size_t,size_t>::const_iterator m = used_mat_poles.begin(); m != used_mat_poles.end(); ++m){
+				const Material &mat = material[m->first];
+				const size_t np = mat.poles.size();
+				size_t po = 0; // actual pole offset (ignoring poles @ 0)
+				for(size_t p = 0; p < np; ++p){
+					if(0 == mat.poles[p].omega_0){ continue; }
+						
+					ASETCOL(col,Aind);
+					BSET(col,col, 0);
+#ifndef ONLY_LOWER
+					for(int i = 0; i < res[0]; ++i){
+						for(int j = 0; j < res[1]; ++j){
+							if(m->first == ind[2*IDX(i,j)+1]){
+								row = ind[2*IDX(i,j)+0] + 2*po + 1; // P
+						
+								ASET(row,col, complex_t(1.));
+//std::cerr << "Setting row = " << row << ", col = " << col << std::endl;
+							}
+						}
+					}
+#endif
+					ASET(col,col, complex_t(0.));
+					po++;
+					col++;
+				}
+			}
+		}
+		std::cerr << "EH_constraints = " << EH_constraints << " extra_constraints = " << extra_constraints << std::endl;
+		std::cerr << "EH_constraint_start = " << EH_constraint_start << " extra_constraint_start = " << extra_constraint_start << std::endl;
+		if(EH_constraints > 0){
+			size_t col = EH_constraint_start+0;
+			ASETCOL(col,Aind);
+			BSET(col,col, 0);
+#ifndef ONLY_LOWER
+			for(int i = 0; i < res[0]; ++i){
+				for(int j = 0; j < res[1]; ++j){
+					const size_t row = DIVH_OFF + IDX(i,j);
+					ASET(row,col, complex_t(1.));
+				}
+			}
+#endif
+			ASET(col,col, complex_t(0.));
+		}
+		if(EH_constraints > 1){
+			size_t col = EH_constraint_start+1;
+			ASETCOL(col,Aind);
+			BSET(col,col, 0);
+#ifndef ONLY_LOWER
+			for(int i = 0; i < res[0]; ++i){
+				for(int j = 0; j < res[1]; ++j){
+					const size_t row = HX_OFF + IDX(i,j);
+					ASET(row,col, complex_t(1.));
+				}
+			}
+#endif
+			ASET(col,col, complex_t(0.));
+			
+			col = EH_constraint_start+2;
+			ASETCOL(col,Aind);
+			BSET(col,col, 0);
+#ifndef ONLY_LOWER
+			for(int i = 0; i < res[0]; ++i){
+				for(int j = 0; j < res[1]; ++j){
+					const size_t row = HY_OFF + IDX(i,j);
+					ASET(row,col, complex_t(1.));
+				}
+			}
+#endif
+			ASET(col,col, complex_t(0.));
+		}
+		
 		ASETCOL(N,Aind);
-		//std::cout << "Aind = " << Aind << ", Annz = " << Annz << std::endl;
+		//std::cerr << "Aind = " << Aind << ", Annz = " << Annz << std::endl;
 	}
 	B = new sparse_t(N,N, Bmap);
 	Atmp = new sparse_t(N,N, Amap);
-	if(0){
+	if(1){
 		std::cout << "A="; RNP::Sparse::PrintSparseMatrix(*Atmp) << ";" << std::endl;
 		std::cout << "B="; RNP::Sparse::PrintSparseMatrix(*B) << ";" << std::endl;
 		exit(0);
@@ -673,14 +810,33 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 #endif
 		);
 	
+	if(0){
+		NCformat *ncf = (NCformat*)superlu_data.A.Store;
+		for(int i = 0; i <= Atmp->m; ++i){
+			std::cout << Atmp->colptr[i] << "\t" << ncf->colptr[i];
+			if(Atmp->colptr[i] != ncf->colptr[i]){
+				std::cout << "\t*";
+			}
+			std::cout << std::endl;
+		}
+		for(int i = 0; i < ncf->nnz; ++i){
+			std::cout << Atmp->rowind[i] << "\t" << ncf->rowind[i];
+			if(Atmp->rowind[i] != ncf->rowind[i]){
+				std::cout << "\t*";
+			}
+			std::cout << std::endl;
+		}
+		exit(0);
+	}
+	
 	int info;
-	superlu_data.perm_c = (int*)malloc(sizeof(int) * N);
-	superlu_data.perm_r = (int*)malloc(sizeof(int) * N);
+	superlu_data.perm_c = intMalloc(N);
+	superlu_data.perm_r = intMalloc(N);
 	zgsfact(&superlu_data.options, &superlu_data.A,
 		superlu_data.perm_c, superlu_data.perm_r,
 		&superlu_data.L, &superlu_data.U,
 		&superlu_data.stat, &info);
-	//std::cout << "info = " << info << std::endl;
+	std::cout << "info = " << info << std::endl;
 	valid_A_numeric = true;
 	return 0;
 }
@@ -689,26 +845,6 @@ void SPB::BandSolver_Ez::ShiftInv(const complex_t &shift, const complex_t *x, co
 	int info;
 	SuperMatrix B;
 	RNP::TBLAS::Copy(N, x,1, y,1);
-	
-	const double klen = hypot(last_k[0], last_k[1]);
-	const size_t Ngrid = res[0]*res[1];
-	if(klen < std::numeric_limits<double>::epsilon() * L.CharacteristicKLength()){
-		complex_t avg[2] = {0.,0.};
-		for(int i = 0; i < res[0]; ++i){
-			for(int j = 0; j < res[1]; ++j){
-				avg[0] += y[HX_OFF + IDX(i,j)];
-				avg[1] += y[HY_OFF + IDX(i,j)];
-			}
-		}
-		avg[0] *= 1./(double)Ngrid;
-		avg[1] *= 1./(double)Ngrid;
-		for(int i = 0; i < res[0]; ++i){
-			for(int j = 0; j < res[1]; ++j){
-				y[HX_OFF + IDX(i,j)] -= avg[0];
-				y[HY_OFF + IDX(i,j)] -= avg[1];
-			}
-		}
-	}
 	
     zCreate_Dense_Matrix(&B, N, 1, (doublecomplex*)y, N, SLU_DN, SLU_Z, SLU_GE);
 	zgstrs(NOTRANS, &superlu_data.L, &superlu_data.U,
