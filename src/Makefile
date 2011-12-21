@@ -9,6 +9,8 @@ CXXFLAGS += -Igeom -Irnp $(RNP_INC) $(SLU_INC)
 SPB: $(SUBDIRS) \
 	z-main.o \
 	z-luaarg.o \
+	z-NestedDissection.o \
+	z-ldl2.o \
 	z-SPBGlue.o \
 	z-util.o \
 	z-types.o \
@@ -20,6 +22,10 @@ z-main.o: main.c SPB.h luaarg.h
 	$(CC) $(CFLAGS) -c $(LUA_INC) $(MPI_INC) main.c -o z-main.o
 z-luaarg.o: luaarg.c luaarg.h
 	$(CC) $(CFLAGS) -c $(LUA_INC) luaarg.c -o z-luaarg.o
+z-NestedDissection.o: NestedDissection.c NestedDissection.h
+	$(CC) $(CFLAGS) -c NestedDissection.c -o z-NestedDissection.o
+z-ldl2.o: ldl2.c ldl2.h
+	$(CC) $(CFLAGS) -c ldl2.c -o z-ldl2.o
 z-SPBGlue.o: SPBGlue.cpp SPB.h SPB.hpp
 	$(CXX) $(CXXFLAGS) -c SPBGlue.cpp -o z-SPBGlue.o
 z-types.o: types.cpp SPB.hpp
@@ -35,8 +41,7 @@ z-EigenSolver.o: EigenSolver.cpp SPB.hpp
 z-EigenSolver_IRA.o: EigenSolver_IRA.cpp SPB.hpp
 	$(CXX) $(CXXFLAGS) -c EigenSolver_IRA.cpp -o z-EigenSolver_IRA.o
 
-all:
-	SPB
+all: SPB
 
 .PHONY: subdirs $(SUBDIRS)
 subdirs: $(SUBDIRS)

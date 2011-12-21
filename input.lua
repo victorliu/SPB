@@ -7,9 +7,9 @@ S = SPB.NewBandSolver{
 }
 
 S:SetOptions{
-	NumBands = 10,
-	Resolution = {10,10},
-	TargetFrequency = 0,
+	NumBands = 30,
+	Resolution = {20,20},
+	TargetFrequency = 0.6,
 	Tolerance = 1e-7,
 	Verbosity = 0
 }
@@ -25,7 +25,7 @@ S:AddMaterial{
 }
 S:AddMaterialLorentzPole{
 	Material = 'Metal',
-	Omega0 = 0.5,
+	Omega0 = 0,
 	Gamma = 0,
 	OmegaP = 1
 }
@@ -34,9 +34,10 @@ S:AddMaterialLorentzPole{
 S:SetRectangle{
 	Material = 'Metal',
 	Center = {0,0},
-	Halfwidths = {0.25,0.25},
+	Halfwidths = {0.125,0.125},
 	Angle = 0
 }
+
 --[[
 S:OutputEpsilon{
 	Resolution = {32,32},
@@ -45,7 +46,7 @@ S:OutputEpsilon{
 }
 ]]
 
-for kx = 0.1,0.5,0.01 do
+for kx = 0,0.5,0.01 do
 	S:SolveK{kx,0}
 
 	io.stdout:write(kx)

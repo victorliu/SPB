@@ -374,7 +374,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 	}else{ // run in REPL mode
-		fprintf(stdout, "No input file given, running in interactive mode\n");
+		fprintf(stdout, "No input file given, running in interactive mode\n"); fflush(stdout);
 		SPB_set_interactive(L, 1);
 		while(fgets(buff, sizeof(buff), stdin) != NULL){
 			error = luaL_loadbuffer(L, buff, strlen(buff), "line") || lua_pcall(L, 0, 0, 0);

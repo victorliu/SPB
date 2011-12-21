@@ -13,6 +13,11 @@
 #include <fstream>
 #include "util.h"
 #include <LinearSolve.h>
+#include <set>
+extern "C"{
+#include "NestedDissection.h"
+#include "ldl2.h"
+}
 
 /* Problem setup:
  *  In Ez polarization, we have fields Hx, Hy, and Ez.
@@ -146,38 +151,48 @@
 
 typedef std::complex<double> complex_t;
 
-#define DIVH_OFF (0*Ngrid)
+#define DIVH_OFF 3
 #define EX_OFF   (undefined)
 #define EY_OFF   (undefined)
-#define EZ_OFF   (1*Ngrid)
-#define HX_OFF   (2*Ngrid)
-#define HY_OFF   (3*Ngrid)
+#define EZ_OFF   1
+#define HX_OFF   2
+#define HY_OFF   0
 #define HZ_OFF   (undefined)
 
 #define IDX(i,j) (res[1]*(i)+(j))
+#define UNIDX(q,i,j) do{ \
+	(i) = (q) / res[1]; \
+	(j) = (q) % res[1]; \
+	}while(0)
 
 SPB::BandSolver_Ez::BandSolver_Ez(double Lr[4]):BandSolver(Lattice2(Lr)),L(Lr),
-	N(0),ind(NULL),B(NULL),
+	N(0),B(NULL),
 	valid_A_numeric(false),
 	last_shift(0)
 {
-    set_default_options(&superlu_data.options);
-    StatInit(&superlu_data.stat);
+	cell2ind = NULL;
+	ind2cell = NULL;
+	matind = NULL;
+	npoles = NULL;
 }
 
 SPB::BandSolver_Ez::~BandSolver_Ez(){
-	free(ind);
+	
+	free(cell2ind);
+	free(ind2cell);
+	free(matind);
+	free(npoles);
+	
 	// delete A
     if(valid_A_numeric){
-		if(NULL != superlu_data.perm_r){ SUPERLU_FREE(superlu_data.perm_r); }
-		if(NULL != superlu_data.perm_c){ SUPERLU_FREE(superlu_data.perm_c); }
-		Destroy_CompCol_Matrix(&superlu_data.A);
-		Destroy_SuperNode_Matrix(&superlu_data.L);
-		Destroy_CompCol_Matrix(&superlu_data.U);
+		free(ldl_data.Lp);
+		free(ldl_data.parent);
+		free(ldl_data.Li);
+		free(ldl_data.Lx);
+		free(ldl_data.D);
 	}
 	if(NULL != B){ delete B; }
 	if(NULL != Atmp){ delete Atmp; }
-    StatFree(&superlu_data.stat);
 }
 
 size_t SPB::BandSolver_Ez::GetSize() const{
@@ -277,107 +292,179 @@ int SPB::BandSolver_Ez::OutputEpsilon(int *res, const char *filename, const char
 
 
 
-
-void
-zgsfact(superlu_options_t *options, SuperMatrix *A, int *perm_c, int *perm_r,
-      SuperMatrix *L, SuperMatrix *U,
-      SuperLUStat_t *stat, int *info ){
-    SuperMatrix AC; /* Matrix postmultiplied by Pc */
-    int      lwork = 0, *etree, i;
-    
-    /* Set default values for some parameters */
-    int      panel_size;     /* panel size */
-    int      relax;          /* no of columns in a relaxed snodes */
-    int      permc_spec;
-
-    *info = 0;
-
-    /*
-     * Get column permutation vector perm_c[], according to permc_spec:
-     *   permc_spec = NATURAL:  natural ordering 
-     *   permc_spec = MMD_AT_PLUS_A: minimum degree on structure of A'+A
-     *   permc_spec = MMD_ATA:  minimum degree on structure of A'*A
-     *   permc_spec = COLAMD:   approximate minimum degree column ordering
-     *   permc_spec = MY_PERMC: the ordering already supplied in perm_c[]
-     */
-    permc_spec = COLAMD;
-    if ( permc_spec != MY_PERMC && options->Fact == DOFACT )
-      get_perm_c(permc_spec, A, perm_c);
-
-    etree = intMalloc(A->ncol);
-
-    sp_preorder(options, A, perm_c, etree, &AC);
-
-    panel_size = sp_ienv(1);
-    relax = sp_ienv(2);
-
-    /*printf("Factor PA = LU ... relax %d\tw %d\tmaxsuper %d\trowblk %d\n", 
-	  relax, panel_size, sp_ienv(3), sp_ienv(4));*/
-    /* Compute the LU factorization of A. */
-    
-    zgstrf(options, &AC, relax, panel_size, etree,
-            NULL, lwork, perm_c, perm_r, L, U, stat, info);
-
-    SUPERLU_FREE(etree);
-    Destroy_CompCol_Permuted(&AC);
-}
-
 	
 int SPB::BandSolver_Ez::InvalidateByStructure(){
-	if(NULL != ind){ free(ind); ind = NULL; }
+	
+	free(cell2ind); cell2ind = NULL;
+	free(ind2cell); ind2cell = NULL;
+	free(matind); matind = NULL;
+	free(npoles); npoles = NULL;
+	
 	if(valid_A_numeric){
-		if(NULL != superlu_data.perm_r){ SUPERLU_FREE(superlu_data.perm_r); }
-		if(NULL != superlu_data.perm_c){ SUPERLU_FREE(superlu_data.perm_c); }
-		Destroy_SuperNode_Matrix(&superlu_data.L);
-		Destroy_CompCol_Matrix(&superlu_data.U);
-		Destroy_CompCol_Matrix(&superlu_data.A);
+		free(ldl_data.Lp);
+		free(ldl_data.parent);
+		free(ldl_data.Li);
+		free(ldl_data.Lx);
+		free(ldl_data.D);
 	}
 	if(NULL != B){
 		delete B;
 	}
 	return 0;
 }
+
+void Acol1(int col, int *nnz, int *row_ind, void *data){
+	RNP::Sparse::TCCSMatrix<complex_t> *A = (RNP::Sparse::TCCSMatrix<complex_t>*)data;
+	const int k1 = A->colptr[2*col+0];
+	const int k2 = A->colptr[2*col+1];
+	const int nnz1 = k2-k1;
+	const int nnz2 = A->colptr[2*col+2] - k2;
+	int p1 = 0;
+	int p2 = 0;
+//printf("col = %d\n", col);
+	*nnz = 0;
+	for(; p1 < nnz1 && p2 < nnz2; ){
+		int i1 = A->rowind[k1+p1] / 2;
+		int i2 = A->rowind[k2+p2] / 2;
+//printf(" i1,2 = %d,%d\n", i1, i2);
+		if(i1 < i2){
+			if(i1 >= col){ break; }
+		}else{
+			if(i2 >= col){ break; }
+		}
+		
+		if(i1 < i2){
+			*row_ind = i1;
+			row_ind++;
+			(*nnz)++;
+			p1++;
+		}else if(i1 > i2){
+			*row_ind = i2;
+			row_ind++;
+			(*nnz)++;
+			p2++;
+		}else{
+			*row_ind = i1;
+			row_ind++;
+			(*nnz)++;
+			p1++;
+			p2++;
+		}
+	}
+}
+void Acol2(int col, int *nnz, int *row_ind, double *row_val, void *data){
+	RNP::Sparse::TCCSMatrix<complex_t> *A = (RNP::Sparse::TCCSMatrix<complex_t>*)data;
+	const int k1 = A->colptr[2*col+0];
+	const int k2 = A->colptr[2*col+1];
+	const int nnz1 = k2-k1;
+	const int nnz2 = A->colptr[2*col+2] - k2;
+	int p1 = 0;
+	int p2 = 0;
+//printf("col = %d\n", col);
+	
+	*nnz = 0;
+	for(; p1 < nnz1 && p2 < nnz2;){
+		int i1raw = A->rowind[k1+p1];
+		int i1 = i1raw / 2;
+		int i1off = i1raw % 2;
+		int i2raw = A->rowind[k2+p2];
+		int i2 = i2raw / 2;
+		int i2off = i2raw % 2;
+		if(i1 < i2){
+			if(i1 > col){ break; }
+		}else{
+			if(i2 > col){ break; }
+		}
+		
+		int p1inc = 0;
+		int p2inc = 0;
+		
+		for(int j = 0; j < 8; ++j){ row_val[j] = 0; }
+		
+		if(i1 < i2){
+			*row_ind = i1;
+			row_val[2*(0+i1off)+0] = A->values[k1+p1].real();
+			row_val[2*(0+i1off)+1] = A->values[k1+p1].imag();
+//printf("A(%d,%d) = ", i1, col); C2PRINT(row_val);
+			row_ind++;
+			row_val += 8;
+			(*nnz)++;
+			p1++;
+		}else if(i1 > i2){
+			*row_ind = i2;
+			row_val[2*(2+i2off)+0] = A->values[k2+p2].real();
+			row_val[2*(2+i2off)+1] = A->values[k2+p2].imag();
+//printf("A(%d,%d) = ", i2, col); C2PRINT(row_val);
+			row_ind++;
+			row_val += 8;
+			(*nnz)++;
+			p2++;
+		}else{
+			*row_ind = i1;
+			if(i1 == col){ // diag is full
+				row_val[2*(0)+0] = A->values[k1+p1].real();
+				row_val[2*(0)+1] = A->values[k1+p1].imag();
+				row_val[2*(1)+0] = A->values[k1+p1+1].real();
+				row_val[2*(1)+1] = A->values[k1+p1+1].imag();
+				row_val[2*(2)+0] = A->values[k2+p2].real();
+				row_val[2*(2)+1] = A->values[k2+p2].imag();
+				row_val[2*(3)+0] = A->values[k2+p2+1].real();
+				row_val[2*(3)+1] = A->values[k2+p2+1].imag();
+//printf("A(%d,%d) = ", i1, col); C2PRINT(row_val);
+			}else{
+				row_val[2*(0+i1off)+0] = A->values[k1+p1].real();
+				row_val[2*(0+i1off)+1] = A->values[k1+p1].imag();
+				row_val[2*(2+i2off)+0] = A->values[k2+p2].real();
+				row_val[2*(2+i2off)+1] = A->values[k2+p2].imag();
+//printf("A(%d,%d) = ", i1, col); C2PRINT(row_val);
+			}
+			row_ind++;
+			row_val += 8;
+			(*nnz)++;
+			p1++;
+			p2++;
+			if(i1 == col){ break; }
+		}
+		p1 += p1inc;
+		p2 += p2inc;
+	}fflush(stdout);
+}
+
+
 int SPB::BandSolver_Ez::MakeASymbolic(){
 	const size_t Ngrid = res[0] * res[1];
 	
 	const double klen = hypot(last_k[0], last_k[1]);
 	const bool AtGamma = (klen < std::numeric_limits<double>::epsilon() * L.CharacteristicKLength());
 	
-	size_t Annz = 0;
-	
-	size_t extra_constraints = 0;
-	size_t EH_constraints = 0;
-	
-//#define ONLY_LOWER
-	// First block column: divH, couples to Hx and Hy twice each + diag
-	Annz += 5*Ngrid;
-	// Second block column: Ez, couples to Hx and Hy twice each + diag
-	Annz += 5*Ngrid;
-	// Each block of Hx and Hy contributes a diagonal
-	Annz += 2*Ngrid;
-#ifndef ONLY_LOWER
-	// Each block of Hx and Hy couples to divH and Ez twice each
-	Annz += 2*4*Ngrid;
-#endif
-	// Each row of a V contributes 2 nonzeros + 1 possible diaonal
-	// Each row of a P contributes 1 nonzeros + 1 possible diaonal
-	if(NULL != ind){ free(ind); }
-	ind = (int*)malloc(sizeof(int) * 2*Ngrid);
+	if(NULL != ind2cell){ free(ind2cell); }
+	if(NULL != cell2ind){ free(cell2ind); }
+	if(NULL != matind){ free(matind); }
+	if(NULL != npoles){ free(npoles); }
+	ind2cell = (int*)malloc(sizeof(int) * 2*Ngrid);
+	cell2ind = (int*)malloc(sizeof(int) * Ngrid);
+	matind = (int*)malloc(sizeof(int) * Ngrid);
+	npoles = (int*)malloc(sizeof(int) * Ngrid);
 
 	// Prepare the indexing
-	size_t extra_constraint_start = 0;
-	size_t EH_constraint_start = 0;
-	std::map<size_t,size_t> used_mat_poles;
-	std::map<size_t,size_t> mat_counts;
+	std::map<size_t,size_t> mat_to_pole_offset;
+	std::set<size_t> used_mat;
+	int constraint_off = 0, n_constraint = 0;
 	{
-		size_t next_index = 0;
+		{ // use cell2ind to temporarily hold the forward permutation
+			int a[2] = {res[1], 1};
+			int p[2] = {1,1};
+			NestedDissectionCartesian1v(2, res, a, p, cell2ind);
+		}
 		for(int i = 0; i < res[0]; ++i){
 			const double fi = ((double)i/(double)res[0]) - 0.5;
 			for(int j = 0; j < res[1]; ++j){
 				const double fj = ((double)j/(double)res[1]) - 0.5;
-				ind[2*IDX(i,j)+0] = 4*Ngrid+next_index;
+				const int q = IDX(i,j);
+				ind2cell[2*cell2ind[q]+1] = q;
 				
-				// get material of this cell (simple pointwise check)
+				// get materials of this cell (for now, simple pointwise check)
+				matind[q] = 0;
 				int tag, num_poles;
 				double p[2] = {
 					L.Lr[0]*fi + L.Lr[2]*fj,
@@ -390,73 +477,50 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 					num_poles = 0;
 				}else{
 					num_poles = material[tag].poles.size();
-//std::cout << i << "\t" << j << "\t" << impl->eps_z_fft[IDX(i,j)] << "\t" << num_poles << std::endl;
+					used_mat.insert(tag);
 				}
-				ind[2*IDX(i,j)+1] = tag;
-				// update next index
-				size_t zero_poles = 0;
-				for(size_t p = 0; p < num_poles; ++p){
-					if(0 == material[tag].poles[p].omega_0){
-						zero_poles++;
-					}
+				npoles[q] = num_poles;
+				if(tag >= 0){
+					matind[q] = tag+1; // assume it is within 4 bit limit
 				}
-				next_index += 2*(num_poles-zero_poles);
+				
+			}
+		}
+		
+		int next_pole_offset = 0;
+		for(std::set<size_t>::const_iterator i = used_mat.begin(); i != used_mat.end(); ++i){
+			mat_to_pole_offset[*i] = next_pole_offset;
+			next_pole_offset += material[*i].poles.size();
+		}
+		
+		// Now perform the indexing, need to set cell2ind and ind2cell[2*p+0];
+		int next_index = 0;
+		for(int p = 0; p < Ngrid; ++p){
+			int q = ind2cell[2*p+1];
+			int i,j; UNIDX(q,i,j);
+			ind2cell[2*p+0] = next_index;
+			cell2ind[q] = next_index;
 			
-				Annz += (num_poles-zero_poles) * 4;
-#ifndef ONLY_LOWER
-				Annz += (num_poles-zero_poles) * 2;
-#endif
-				mat_counts[tag]++;
-				if(used_mat_poles[tag] == 0){
-					used_mat_poles[tag] = num_poles-zero_poles;
-				}
-			}
+			// We have Ez, Hx, Hy, divH, plus V,P pairs for each pole
+			next_index += 4 + 2*npoles[q];
 		}
+		N = next_index;
 		if(AtGamma){
-			size_t last_offset = extra_constraints; // should be 0
-			for(std::map<size_t,size_t>::iterator i = used_mat_poles.begin(); i != used_mat_poles.end(); ++i){
-				size_t n_poles = i->second;
-				i->second = last_offset;
-				extra_constraints += n_poles;
-				Annz += n_poles * (mat_counts[i->first]+1);
-	#ifndef ONLY_LOWER
-				Annz += n_poles * mat_counts[i->first];
-	#endif
-				last_offset = n_poles;
-			}
+			constraint_off = N;
+			n_constraint = 4 + 2*next_pole_offset;
+			N += n_constraint;
 		}
-		extra_constraint_start = 4*Ngrid + next_index;
-		
-		EH_constraint_start = extra_constraint_start+extra_constraints;
-		/*
-		// for divH
-		EH_constraints += 1;
-			Annz += 1*(Ngrid + 1);
-#ifndef ONLY_LOWER
-			Annz += 1*Ngrid;
-#endif*/
-
-		if(AtGamma){
-			EH_constraints += 3;
-			Annz += 3*(Ngrid + 1);
-#ifndef ONLY_LOWER
-			Annz += 3*Ngrid;
-#endif
-		}
-		
-		N = 4*Ngrid + next_index + extra_constraints + EH_constraints;
 	}
-//std::cout << "extra_constraints = " << extra_constraints << std::endl;
 	
 	sparse_t::entry_map_t Amap;
 	sparse_t::entry_map_t Bmap;
 	
-	complex_t *Adata = (complex_t*)doublecomplexMalloc(Annz);
-	int *rowind = intMalloc(Annz);
-	int *colptr = intMalloc((N+1));
+	//complex_t *Adata = (complex_t*)doublecomplexMalloc(Annz);
+	//int *rowind = intMalloc(Annz);
+	//int *colptr = intMalloc((N+1));
 	
 	{
-		size_t Aind = 0;
+		//size_t Aind = 0;
 		const double Lrl[2] = {
 			hypot(L.Lr[0], L.Lr[1]),
 			hypot(L.Lr[2], L.Lr[3])
@@ -473,330 +537,252 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 			complex_t(cos(use_k[1]*2*M_PI), sin(use_k[1]*2*M_PI))
 		};
 		
-#define ASET(ROW,COL,COEFF) do{ \
+/*
 		Adata[Aind] = (COEFF); \
 		rowind[Aind] = (ROW); \
 		Aind++; \
+*/
+#define ASET(ROW,COL,COEFF) do{ \
 		Amap[sparse_t::index_t((ROW),(COL))] =  (COEFF); \
 	}while(0)
 //Amap[sparse_t::index_t((COL),(ROW))] =  std::conj(COEFF);
-#define ASETCOL(COL,IND) colptr[(COL)] = (IND)
+#define ASETCOL(COL,IND) /*colptr[(COL)] = (IND)*/
 #define BSET(ROW,COL,COEFF) Bmap[sparse_t::index_t((ROW),(COL))] = (COEFF)
 
 		size_t row;
 		complex_t coeff;
-		
-		for(int i = 0; i < res[0]; ++i){
-			for(int j = 0; j < res[1]; ++j){
-				const size_t col = DIVH_OFF + IDX(i,j);
-				ASETCOL(col,Aind);
-				BSET(col,col, 0);
-				ASET(col,col, complex_t(0.));
 
-				// H += i grad divH
-				// Hx += idr[0] * (divH[i,j,k] - divH[i-1,j,k])
-				// Hy += idr[1] * (divH[i,j,k] - divH[i,j-1,k])
-				coeff = complex_t(0,idr[0]);
-				if(0 == i){
-					row = HX_OFF + IDX(i,j);
-					ASET(row,col, coeff);
-					row = HX_OFF + IDX(res[0]-1,j);
-					ASET(row,col, -coeff/Bloch[0]);
-				}else{
-					row = HX_OFF + IDX(i-1,j);
-					ASET(row,col, -coeff);
-					row = HX_OFF + IDX(i,j);
-					ASET(row,col, coeff);
-				}
-				
-				coeff = complex_t(0,idr[1]);
-				if(0 == j){
-					row = HY_OFF + IDX(i,j);
-					ASET(row,col, coeff);
-					row = HY_OFF + IDX(i,res[1]-1);
-					ASET(row,col, -coeff/Bloch[1]);
-				}else{
-					row = HY_OFF + IDX(i,j-1);
-					ASET(row,col, -coeff);
-					row = HY_OFF + IDX(i,j);
-					ASET(row,col, coeff);
-				}
-				if(EH_constraints){
-					ASET(EH_constraint_start+0,col, complex_t(1.));
-				}
-			}
-		}
 		for(int i = 0; i < res[0]; ++i){
 			for(int j = 0; j < res[1]; ++j){
-				const size_t col = EZ_OFF + IDX(i,j);
-				ASETCOL(col,Aind);
+				const int q = IDX(i,j);
+				const int row0 = cell2ind[q];
+				int row = 0, col;
 				
-				const int curmat = ind[2*IDX(i,j)+1];
-				complex_t eps_z(1.);
-				if(curmat >= 0){
-					eps_z = material[curmat].eps_inf.value[8];
-				}
-				BSET(col,col, eps_z);
-				ASET(col,col, -target*eps_z);
-				
-				// Hx = complex_t(0,-idr[1]) * (Ez[i,j+1,k] - Ez[i,j,k])
-				coeff = complex_t(0,idr[1]);
-				if(j+1 == res[1]){
-					row = HX_OFF + IDX(i,0);
-					ASET(row,col, -coeff*Bloch[1]);
-					row = HX_OFF + IDX(i,j);
-					ASET(row,col, coeff);
-				}else{
-					row = HX_OFF + IDX(i,j);
-					ASET(row,col, coeff);
-					row = HX_OFF + IDX(i,j+1);
-					ASET(row,col, -coeff);
-				}
-				
-				// Hy = complex_t(0, idr[0]) * (Ez[i+1,j,k] - Ez[i,j,k])
-				coeff = complex_t(0,idr[0]);
-				if(i+1 == res[0]){
-					row = HY_OFF + IDX(0,j);
-					ASET(row,col, coeff*Bloch[0]);
-					row = HY_OFF + IDX(i,j);
-					ASET(row,col, -coeff);
-				}else{
-					row = HY_OFF + IDX(i,j);
-					ASET(row,col, -coeff);
-					row = HY_OFF + IDX(i+1,j);
-					ASET(row,col, coeff);
-				}
-				
-				
-				if(curmat >= 0){
-					const Material &m = material[curmat];
-					const size_t np = m.poles.size();
-					size_t po = 0; // actual pole offset (ignoring poles @ 0)
-					const int row0 = ind[2*IDX(i,j)+0];
-					for(size_t p = 0; p < np; ++p){
-						if(0 == m.poles[p].omega_0){ continue; }
-						row = row0 + 2*po + 0; // V_p
-				
-						coeff = complex_t(0, m.poles[p].omega_p) * eps_z;
+				{ // Set the Hy column
+					col = row0 + HY_OFF;
+					BSET(col,col, 1);
+					ASET(col,col, -target);
+					
+					// Ez = complex_t(0,-idr[1]) * (Hx[i,j,k] - Hx[i,j-1,k])
+					//    + complex_t(0, idr[0]) * (Hy[i,j,k] - Hy[i-1,j,k])
+					coeff = complex_t(0,idr[0]);
+					if(0 == i){
+						row = row0 + EZ_OFF;
 						ASET(row,col, coeff);
-						
-						po++;
+						row = cell2ind[IDX(res[0]-1,j)] + EZ_OFF;
+						ASET(row,col, -coeff/Bloch[0]);
+					}else{
+						row = cell2ind[IDX(i-1,j)] + EZ_OFF;
+						ASET(row,col, -coeff);
+						row = row0 + EZ_OFF;
+						ASET(row,col, coeff);
+					}
+					
+					// divH = idr[0] * (Hx[i+1,j,k] - Hx[i,j,k])
+					//      + idr[1] * (Hy[i,j+1,k] - Hy[i,j,k]) <--
+					coeff = complex_t(0,idr[1]);
+					if(j+1 == res[0]){
+						row = cell2ind[IDX(i,0)] + DIVH_OFF;
+						ASET(row,col, coeff*Bloch[1]);
+						row = row0 + DIVH_OFF;
+						ASET(row,col, -coeff);
+					}else{
+						row = row0 + DIVH_OFF;
+						ASET(row,col, -coeff);
+						row = cell2ind[IDX(i,j+1)] + DIVH_OFF;
+						ASET(row,col, coeff);
+					}
+					
+					if(constraint_off){
+						ASET(constraint_off+HY_OFF, col, complex_t(0, 1));
+						ASET(col, constraint_off+HY_OFF, complex_t(0,-1));
 					}
 				}
-			}
-		}
-		
-		for(int i = 0; i < res[0]; ++i){
-			for(int j = 0; j < res[1]; ++j){
-				const size_t col = HX_OFF + IDX(i,j);
-				BSET(col,col, 1);
-				ASETCOL(col,Aind);
-#ifndef ONLY_LOWER
 				
-				// divH = idr[0] * (Hx[i+1,j,k] - Hx[i,j,k]) <--
-				//      + idr[1] * (Hy[i,j+1,k] - Hy[i,j,k])
-				coeff = complex_t(0,idr[0]);
-				if(i+1 == res[0]){
-					row = DIVH_OFF + IDX(0,j);
-					ASET(row,col, coeff*Bloch[0]);
-					row = DIVH_OFF + IDX(i,j);
-					ASET(row,col, -coeff);
-				}else{
-					row = DIVH_OFF + IDX(i,j);
-					ASET(row,col, -coeff);
-					row = DIVH_OFF + IDX(i+1,j);
-					ASET(row,col, coeff);
-				}
-				
-				// Ez = complex_t(0,-idr[1]) * (Hx[i,j,k] - Hx[i,j-1,k])
-				//    + complex_t(0, idr[0]) * (Hy[i,j,k] - Hy[i-1,j,k])
-				coeff = complex_t(0,idr[1]);
-				if(0 == j){
-					row = EZ_OFF + IDX(i,j);
-					ASET(row,col, -coeff);
-					row = EZ_OFF + IDX(i,res[1]-1);
-					ASET(row,col, coeff/Bloch[1]);
-				}else{
-					row = EZ_OFF + IDX(i,j-1);
-					ASET(row,col, coeff);
-					row = EZ_OFF + IDX(i,j);
-					ASET(row,col, -coeff);
-				}
-#endif
-				ASET(col,col, -target);
-				if(EH_constraints > 1){
-					ASET(EH_constraint_start+1,col, complex_t(1.));
-				}
-			}
-		}
-		for(int i = 0; i < res[0]; ++i){
-			for(int j = 0; j < res[1]; ++j){
-				const size_t col = HY_OFF + IDX(i,j);
-				BSET(col,col, 1);
-				ASETCOL(col,Aind);
-#ifndef ONLY_LOWER
-				
-				// divH = idr[0] * (Hx[i+1,j,k] - Hx[i,j,k])
-				//      + idr[1] * (Hy[i,j+1,k] - Hy[i,j,k]) <--
-				coeff = complex_t(0,idr[1]);
-				if(j+1 == res[0]){
-					row = DIVH_OFF + IDX(i,0);
-					ASET(row,col, coeff*Bloch[1]);
-					row = DIVH_OFF + IDX(i,j);
-					ASET(row,col, -coeff);
-				}else{
-					row = DIVH_OFF + IDX(i,j);
-					ASET(row,col, -coeff);
-					row = DIVH_OFF + IDX(i,j+1);
-					ASET(row,col, coeff);
-				}
-				
-				// Ez = complex_t(0,-idr[1]) * (Hx[i,j,k] - Hx[i,j-1,k])
-				//    + complex_t(0, idr[0]) * (Hy[i,j,k] - Hy[i-1,j,k])
-				coeff = complex_t(0,idr[0]);
-				if(0 == i){
-					row = EZ_OFF + IDX(i,j);
-					ASET(row,col, coeff);
-					row = EZ_OFF + IDX(res[0]-1,j);
-					ASET(row,col, -coeff/Bloch[0]);
-				}else{
-					row = EZ_OFF + IDX(i-1,j);
-					ASET(row,col, -coeff);
-					row = EZ_OFF + IDX(i,j);
-					ASET(row,col, coeff);
-				}
-#endif
-				ASET(col,col, -target);
-				if(EH_constraints > 1){
-					ASET(EH_constraint_start+2,col, complex_t(1.));
-				}
-			}
-		}
-		for(int i = 0; i < res[0]; ++i){
-			for(int j = 0; j < res[1]; ++j){
-				const int col0 = ind[2*IDX(i,j)+0];
-				size_t col;
-				const int curmat = ind[2*IDX(i,j)+1];
-				complex_t eps_z(1.);
-				if(curmat >= 0){
-					eps_z = material[curmat].eps_inf.value[8];
-				}
-//std::cerr << "starting Aind = " << Aind;
-				if(curmat >= 0){
-					const Material &m = material[curmat];
-					const size_t np = m.poles.size();
-					size_t po = 0; // actual pole offset (ignoring poles @ 0)
-					for(size_t p = 0; p < np; ++p){
-						if(0 == m.poles[p].omega_0){ continue; }
-						col = col0 + 2*po + 0; // V_p
-						ASETCOL(col,Aind);
-#ifndef ONLY_LOWER
-						row = EZ_OFF + IDX(i,j); // E
-						coeff = complex_t(0, m.poles[p].omega_p) * eps_z;
-						ASET(row,col, -coeff);
-#endif
-						coeff = complex_t(0,-m.poles[p].Gamma) * eps_z;
-						ASET(col,col, coeff - target);
-						BSET(col,col, 1);
-						
-						coeff = complex_t(0, m.poles[p].omega_0) * eps_z;
-						row = col0 + 2*po + 1; // P
-						ASET(row,col, coeff);
-						
-						col = col0 + 2*po + 1; // P
-						row = col0 + 2*po + 0; // V
-
-						ASETCOL(col,Aind);
-						BSET(col,col, 1);
-#ifndef ONLY_LOWER
-						ASET(row,col, -coeff);
-#endif
-						ASET(col,col, -target);
-						if(extra_constraints){
-//std::cerr << "used_mat_poles[curmat] = " << used_mat_poles[curmat] << ", po = " << po << std::endl;
-							ASET(extra_constraint_start+used_mat_poles[curmat]+po,col, complex_t(1.));
-						}
-						po++;
-					}
-				}
-//std::cerr << ", ending Aind = " << Aind << std::endl;
-			}
-		}
-		if(extra_constraints){
-			size_t col = extra_constraint_start;
-			for(std::map<size_t,size_t>::const_iterator m = used_mat_poles.begin(); m != used_mat_poles.end(); ++m){
-				const Material &mat = material[m->first];
-				const size_t np = mat.poles.size();
-				size_t po = 0; // actual pole offset (ignoring poles @ 0)
-				for(size_t p = 0; p < np; ++p){
-					if(0 == mat.poles[p].omega_0){ continue; }
-						
+				{ // Set the divH column
+					int col = row0 + DIVH_OFF;
 					ASETCOL(col,Aind);
 					BSET(col,col, 0);
-#ifndef ONLY_LOWER
-					for(int i = 0; i < res[0]; ++i){
-						for(int j = 0; j < res[1]; ++j){
-							if(m->first == ind[2*IDX(i,j)+1]){
-								row = ind[2*IDX(i,j)+0] + 2*po + 1; // P
-						
-								ASET(row,col, complex_t(1.));
-//std::cerr << "Setting row = " << row << ", col = " << col << std::endl;
-							}
-						}
-					}
-#endif
 					ASET(col,col, complex_t(0.));
-					po++;
-					col++;
+
+					// H += i grad divH
+					// Hx += idr[0] * (divH[i,j,k] - divH[i-1,j,k])
+					// Hy += idr[1] * (divH[i,j,k] - divH[i,j-1,k])
+					
+					coeff = complex_t(0,idr[1]);
+					if(0 == j){
+						row = row0 + HY_OFF;
+						ASET(row,col, coeff);
+						row = cell2ind[IDX(i,res[1]-1)] + HY_OFF;
+						ASET(row,col, -coeff/Bloch[1]);
+					}else{
+						row = cell2ind[IDX(i,j-1)] + HY_OFF;
+						ASET(row,col, -coeff);
+						row = row0 + HY_OFF;
+						ASET(row,col, coeff);
+					}
+					
+					coeff = complex_t(0,idr[0]);
+					if(0 == i){
+						row = row0 + HX_OFF;
+						ASET(row,col, coeff);
+						row = cell2ind[IDX(res[0]-1,j)] + HX_OFF;
+						ASET(row,col, -coeff/Bloch[0]);
+					}else{
+						row = cell2ind[IDX(i-1,j)] + HX_OFF;
+						ASET(row,col, -coeff);
+						row = row0 + HX_OFF;
+						ASET(row,col, coeff);
+					}
+					
+					if(constraint_off){
+						ASET(constraint_off+DIVH_OFF, col, complex_t(0, 1));
+						ASET(col, constraint_off+DIVH_OFF, complex_t(0,-1));
+					}
+				}
+				
+				{ // Set the Ez column
+					col = row0 + EZ_OFF;
+					ASETCOL(col,Aind);
+					
+					const int curmat = matind[q];
+					complex_t eps_z(1.);
+					if(curmat > 0){
+						eps_z = material[curmat-1].eps_inf.value[8];
+					}
+					BSET(col,col, eps_z);
+					ASET(col,col, -target*eps_z);
+					
+					// Hx = complex_t(0,-idr[1]) * (Ez[i,j+1,k] - Ez[i,j,k])
+					coeff = complex_t(0,idr[1]);
+					if(j+1 == res[1]){
+						row = cell2ind[IDX(i,0)] + HX_OFF;
+						ASET(row,col, -coeff*Bloch[1]);
+						row = row0 + HX_OFF;
+						ASET(row,col, coeff);
+					}else{
+						row = row0 + HX_OFF;
+						ASET(row,col, coeff);
+						row = cell2ind[IDX(i,j+1)] + HX_OFF;
+						ASET(row,col, -coeff);
+					}
+					
+					// Hy = complex_t(0, idr[0]) * (Ez[i+1,j,k] - Ez[i,j,k])
+					coeff = complex_t(0,idr[0]);
+					if(i+1 == res[0]){
+						row = cell2ind[IDX(0,j)] + HY_OFF;
+						ASET(row,col, coeff*Bloch[0]);
+						row = row0 + HY_OFF;
+						ASET(row,col, -coeff);
+					}else{
+						row = row0 + HY_OFF;
+						ASET(row,col, -coeff);
+						row = cell2ind[IDX(i+1,j)] + HY_OFF;
+						ASET(row,col, coeff);
+					}
+					
+					if(constraint_off){
+						ASET(constraint_off+EZ_OFF, col, complex_t(0, 1));
+						ASET(col, constraint_off+EZ_OFF, complex_t(0,-1));
+					}
+				}
+				
+				{ // Set the Hx column
+					int col = row0 + HX_OFF;
+					BSET(col,col, 1);
+					
+					// divH = idr[0] * (Hx[i+1,j,k] - Hx[i,j,k]) <--
+					//      + idr[1] * (Hy[i,j+1,k] - Hy[i,j,k])
+					coeff = complex_t(0,idr[0]);
+					if(i+1 == res[0]){
+						row = cell2ind[IDX(0,j)] + DIVH_OFF;
+						ASET(row,col, coeff*Bloch[0]);
+						row = row0 + DIVH_OFF;
+						ASET(row,col, -coeff);
+					}else{
+						row = row0 + DIVH_OFF;
+						ASET(row,col, -coeff);
+						row = cell2ind[IDX(i+1,j)] + DIVH_OFF;
+						ASET(row,col, coeff);
+					}
+					
+					// Ez = complex_t(0,-idr[1]) * (Hx[i,j,k] - Hx[i,j-1,k])
+					//    + complex_t(0, idr[0]) * (Hy[i,j,k] - Hy[i-1,j,k])
+					coeff = complex_t(0,idr[1]);
+					if(0 == j){
+						row = row0 + EZ_OFF;
+						ASET(row,col, -coeff);
+						row = cell2ind[IDX(i,res[1]-1)] + EZ_OFF;
+						ASET(row,col, coeff/Bloch[1]);
+					}else{
+						row = cell2ind[IDX(i,j-1)] + EZ_OFF;
+						ASET(row,col, coeff);
+						row = row0 + EZ_OFF;
+						ASET(row,col, -coeff);
+					}
+					
+					if(constraint_off){
+						ASET(constraint_off+HX_OFF, col, complex_t(0, 1));
+						ASET(col, constraint_off+HX_OFF, complex_t(0,-1));
+					}
+
+					ASET(col,col, -target);
+				}
+				
+				// Deal with all the poles
+				// oh god that sounds racist
+				row = row0 + 4;
+				int matbits = matind[q];
+				while(matbits & 0xF){
+					const int m = (matbits & 0xF)-1;
+					complex_t eps_z(1.);
+					if(m > 0){
+						eps_z = material[m-1].eps_inf.value[8];
+					}
+					for(int pi = 0; pi < material[m].poles.size(); ++pi){
+						const LorentzPole &pole = material[m].poles[pi];
+						if(0 == pole.omega_0){
+							ASET(row,row, complex_t(0.));
+							ASET(row+1,row, complex_t(0., 1.));
+							ASET(row,row+1, complex_t(0.,-1.));
+							ASET(row+1,row+1, -target);
+							BSET(row,row, 0.);
+						}else{
+							ASET(row,row, -target);
+							ASET(row+1,row, complex_t(0., pole.omega_0) * eps_z);
+							ASET(row,row+1, complex_t(0.,-pole.omega_0) * eps_z);
+							ASET(row+1,row+1, -target);
+							BSET(row,row, 1.);
+						}
+						ASET(row0+EZ_OFF, row+1, complex_t(0.,-pole.omega_p) * eps_z);
+						ASET(row+1, row0+EZ_OFF, complex_t(0., pole.omega_p) * eps_z);
+						BSET(row+1,row+1, 1.);
+						
+						if(constraint_off){
+							int constraint_row = constraint_off + 4 + mat_to_pole_offset[m] + 2*pi;
+							ASET(constraint_row, row+0, complex_t(0, -1));
+							ASET(row+0, constraint_row, complex_t(0,  1));
+							
+							constraint_row++;
+							ASET(constraint_row, row+1, complex_t(0, -1));
+							ASET(row+1, constraint_row, complex_t(0,  1));
+						}
+						
+						row += 2;
+					}
+					matbits >>= 4;
 				}
 			}
 		}
-		//std::cerr << "EH_constraints = " << EH_constraints << " extra_constraints = " << extra_constraints << std::endl;
-		//std::cerr << "EH_constraint_start = " << EH_constraint_start << " extra_constraint_start = " << extra_constraint_start << std::endl;
-		if(EH_constraints > 0){
-			size_t col = EH_constraint_start+0;
-			ASETCOL(col,Aind);
-			BSET(col,col, 0);
-#ifndef ONLY_LOWER
-			for(int i = 0; i < res[0]; ++i){
-				for(int j = 0; j < res[1]; ++j){
-					const size_t row = DIVH_OFF + IDX(i,j);
-					ASET(row,col, complex_t(1.));
-				}
+		for(int i = 0; i < n_constraint; ++i){
+			BSET(constraint_off+i,constraint_off+i, 0.);
+			ASET(constraint_off+i,constraint_off+i, 10.);
+			if(0 == i%2){
+				ASET(constraint_off+i+1,constraint_off+i, complex_t(0,0));
+			}else{
+				ASET(constraint_off+i-1,constraint_off+i, complex_t(0,0));
 			}
-#endif
-			ASET(col,col, complex_t(0.));
 		}
-		if(EH_constraints > 1){
-			size_t col = EH_constraint_start+1;
-			ASETCOL(col,Aind);
-			BSET(col,col, 0);
-#ifndef ONLY_LOWER
-			for(int i = 0; i < res[0]; ++i){
-				for(int j = 0; j < res[1]; ++j){
-					const size_t row = HX_OFF + IDX(i,j);
-					ASET(row,col, complex_t(1.));
-				}
-			}
-#endif
-			ASET(col,col, complex_t(0.));
-			
-			col = EH_constraint_start+2;
-			ASETCOL(col,Aind);
-			BSET(col,col, 0);
-#ifndef ONLY_LOWER
-			for(int i = 0; i < res[0]; ++i){
-				for(int j = 0; j < res[1]; ++j){
-					const size_t row = HY_OFF + IDX(i,j);
-					ASET(row,col, complex_t(1.));
-				}
-			}
-#endif
-			ASET(col,col, complex_t(0.));
-		}
-		
-		ASETCOL(N,Aind);
-		//std::cerr << "Aind = " << Aind << ", Annz = " << Annz << std::endl;
 	}
 	B = new sparse_t(N,N, Bmap);
 	Atmp = new sparse_t(N,N, Amap);
@@ -805,55 +791,85 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 		std::cout << "B="; RNP::Sparse::PrintSparseMatrix(*B) << ";" << std::endl;
 		exit(0);
 	}
-	zCreate_CompCol_Matrix(&superlu_data.A, N, N, Annz,
-		(doublecomplex*)Adata, rowind, colptr, SLU_NC, SLU_Z,
-#ifdef ONLY_LOWER
-		SLU_SYL
-#else
-		SLU_GE
-#endif
-		);
 	
-	if(0){
-		NCformat *ncf = (NCformat*)superlu_data.A.Store;
-		for(int i = 0; i <= Atmp->m; ++i){
-			std::cout << Atmp->colptr[i] << "\t" << ncf->colptr[i];
-			if(Atmp->colptr[i] != ncf->colptr[i]){
-				std::cout << "\t*";
-			}
-			std::cout << std::endl;
+	ldl_data.Lp = (int*)malloc(sizeof(int) * (N+1));
+	ldl_data.parent = (int*)malloc(sizeof(int) * N);
+	ldl_data.D  = (double*)malloc(sizeof(double) * 4*N);
+	
+	int *Lnz = (int*)malloc(sizeof(int) * N);
+	int *Flag = (int*)malloc(sizeof(int) * N);
+	int *Pattern = (int*)malloc(sizeof(int) * N);
+	double *Y = (double*)malloc(sizeof(double) * 4*N);
+	int *rowind = (int*)malloc(sizeof(int) * N);
+	double *rowval = (double*)malloc(sizeof(double) * 8*N);
+	LDL_symbolic(N/2, N, &Acol1, ldl_data.Lp, ldl_data.parent, Lnz, Flag, rowind, (void*)Atmp);
+	const int lnz = ldl_data.Lp[N/2];
+	ldl_data.Li = (int*)malloc(sizeof(int) * lnz);
+	ldl_data.Lx = (double*)malloc(sizeof(double) * 8*lnz);
+	LDL_numeric(N/2, N, &Acol2, ldl_data.Lp, ldl_data.parent, Lnz, ldl_data.Li, ldl_data.Lx, ldl_data.D, Y, Pattern, Flag, rowind, rowval, (void*)Atmp);
+	
+	// It would appear that the matrix remains singular (well, the D matrix)
+	// even with all the extra constraints. This only seems to happen at
+	// zero shift, so we just have to avoid a target frequency of zero at
+	// the Gamma point.
+	
+	/*
+	if(AtGamma){ // last part needs zeroing
+		double *d = (double*)ldl_data.D;
+		for(int j = 0; j < n_constraint; ++j){
+			int k = 4*N-4*n_constraint+4*j;
+			d[k+0] = 0;
+			d[k+1] = 0;
+			d[k+2] = 0;
+			d[k+3] = 0;
 		}
-		for(int i = 0; i < ncf->nnz; ++i){
-			std::cout << Atmp->rowind[i] << "\t" << ncf->rowind[i];
-			if(Atmp->rowind[i] != ncf->rowind[i]){
-				std::cout << "\t*";
-			}
-			std::cout << std::endl;
-		}
-		exit(0);
+	}*/
+	/*
+	for(int j = 0; j < 4*N; ++j){
+		double *d = (double*)ldl_data.D;
+		printf("%g\n", d[j]);
 	}
+	*/
+	free(rowval);
+	free(rowind);
+	free(Y);
+	free(Pattern);
+	free(Flag);
+	free(Lnz);
 	
-	int info;
-	superlu_data.perm_c = intMalloc(N);
-	superlu_data.perm_r = intMalloc(N);
-	zgsfact(&superlu_data.options, &superlu_data.A,
-		superlu_data.perm_c, superlu_data.perm_r,
-		&superlu_data.L, &superlu_data.U,
-		&superlu_data.stat, &info);
-	//std::cout << "info = " << info << std::endl;
 	valid_A_numeric = true;
+	
 	return 0;
 }
 
 void SPB::BandSolver_Ez::ShiftInv(const complex_t &shift, const complex_t *x, complex_t *y) const{
 	int info;
-	SuperMatrix B;
 	RNP::TBLAS::Copy(N, x,1, y,1);
 	
-    zCreate_Dense_Matrix(&B, N, 1, (doublecomplex*)y, N, SLU_DN, SLU_Z, SLU_GE);
-	zgstrs(NOTRANS, &superlu_data.L, &superlu_data.U,
-		superlu_data.perm_c, superlu_data.perm_r,
-		&B, &superlu_data.stat, &info);
+	LDL_lsolve(N/2, (double*)y, ldl_data.Lp, ldl_data.Li, ldl_data.Lx);
+	LDL_dsolve(N/2, (double*)y, ldl_data.D);
+	LDL_ltsolve(N/2, (double*)y, ldl_data.Lp, ldl_data.Li, ldl_data.Lx);
+	/*
+	complex_t *res = new complex_t[N];
+	double *Y = (double*)res;
+	for(int i = 0; i < N; i++){
+		res[i] = -x[i];
+	}
+	RNP::Sparse::MultMV<'N'>(*Atmp, y, res, complex_t(1.), complex_t(1.));
+	
+	//for(int j = 0; j < N/2; j++){
+	//	printf("Y[%d] = {%.14g+i%.14g %.14g+i%.14g}\n", j, Y[4*j+0], Y[4*j+1], Y[4*j+2], Y[4*j+3]);
+	//}
+	// rnorm = norm (y, inf)
+	double rnorm = 0;
+	for(int i = 0; i < 2*N; i++){
+		double r = (Y[i] > 0) ? (Y[i]) : (-Y[i]);
+		rnorm = (r > rnorm) ? (r) : (rnorm);
+	}
+	printf ("relative maxnorm of residual: %g\n", rnorm);
+	
+	delete [] res;
+	*/
 	//std::cout << "info  = " << info << std::endl;
 }
 
@@ -863,7 +879,7 @@ int SPB::BandSolver_Ez::MakeANumeric(){
 int SPB::BandSolver_Ez::UpdateA(const double k[2]){
 	//temp hacky
 	InvalidateByStructure();
-	if(NULL == ind){
+	if(NULL == cell2ind){
 		MakeASymbolic();
 	}
 	if(!valid_A_numeric){

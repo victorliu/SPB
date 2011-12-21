@@ -230,13 +230,37 @@ class BandSolver_Ez : public BandSolver{
 	Lattice2 L;
 	
 	size_t N;
-	int *ind;
-	mutable struct{
-		SuperMatrix A, L, U;
-		superlu_options_t options;
-		SuperLUStat_t stat;
-		int *perm_c, *perm_r;
-	} superlu_data;
+	
+	// cell2ind is length N.
+	// Maps a cell (i,j) with index q=res[1]*i+j to the starting matrix index
+	// So cell2ind[q] is the starting matrix index for cell (i,j)
+	int *cell2ind;
+	
+	// ind2cell is length 2*N; pairs of numbers.
+	// First in pair maps from permuted cell index to starting matrix index.
+	//   This list is in sorted ascending order.
+	// Second in pair maps from permuted cell index to cell index
+	//   This is the inverse mapping of cell2ind; cell2ind[ind2cell[2*q+0]] == q
+	// To map from matrix index back to a cell index, perform a binary search
+	//   on ind[2*p+0] to obtain p (round down). Then apply q = ind[2*p+1].
+	int *ind2cell;
+	
+	// matind is length N.
+	// Each entry is a bitmap which indicates which materials are present in a cell/
+	// matind[q] for cell index q is laid out in blocks of 4 bits (for up to 8 materials
+	// in a cell, and up to 15 addressable materials total (zero is regarded as no
+	// material), in order from lower order bits to higher order bits until a set
+	// of 4 zero bits is encountered.
+	int *matind;
+	
+	// npoles is length N.
+	// npoles[q] is the number of poles at cell index q.
+	int *npoles;
+
+	struct{
+		int *Lp, *parent, *Li;
+		double *Lx, *D;
+	} ldl_data;
 	sparse_t *B, *Atmp;
 	// When structure changes, invalidate A, B, ind
 	// When K changes, symbolic A still good, need to update it
