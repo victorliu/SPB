@@ -6,9 +6,6 @@
 #include <map>
 #include <complex>
 #include <Sparse.h>
-#include <slu_zdefs.h>
-#include <slu_util.h>
-#include <supermatrix.h>
 #include "SPB.h"
 extern "C" {
 #include "ShapeSet.h"
