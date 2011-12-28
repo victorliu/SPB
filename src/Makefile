@@ -10,7 +10,7 @@ SPB: $(SUBDIRS) \
 	z-main.o \
 	z-luaarg.o \
 	z-NestedDissection.o \
-	z-ldl2.o \
+	z-LDL2.o \
 	z-SPBGlue.o \
 	z-util.o \
 	z-types.o \
@@ -24,8 +24,8 @@ z-luaarg.o: luaarg.c luaarg.h
 	$(CC) $(CFLAGS) -c $(LUA_INC) luaarg.c -o z-luaarg.o
 z-NestedDissection.o: NestedDissection.c NestedDissection.h
 	$(CC) $(CFLAGS) -c NestedDissection.c -o z-NestedDissection.o
-z-ldl2.o: ldl2.c ldl2.h
-	$(CC) $(CFLAGS) -c ldl2.c -o z-ldl2.o
+z-LDL2.o: LDL2.cpp LDL2.h
+	$(CXX) $(CFLAGS) -c LDL2.cpp -o z-LDL2.o
 z-SPBGlue.o: SPBGlue.cpp SPB.h SPB.hpp
 	$(CXX) $(CXXFLAGS) -c SPBGlue.cpp -o z-SPBGlue.o
 z-types.o: types.cpp SPB.hpp

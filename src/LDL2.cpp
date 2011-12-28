@@ -73,7 +73,6 @@ int LDL2::Analyze(const HermitianMatrixProvider& A){
 			Parent[k] = -1;
 			Flag[k] = k;
 			Lnz[k] = 0;
-			const int kk = A.Perm(k);
 			for(int b = 0; b < 2; ++b){
 				for(int p = rowptr[2*k1+b]; p < rowptr[2*k1+b+1]; ++p){
 					int i = A.PermInv(colind[p])/2;
@@ -182,7 +181,6 @@ int LDL2::Factorize(const HermitianMatrixProvider& A){
 			int top = n;     // stack for pattern is empty
 			Flag[k] = k;     // mark node k as visited
 			Lnz[k] = 0;      // count of nonzeros in column k of L
-			const int kk = A.Perm(k);
 			for(int b = 0; b < 2; ++b){
 				for(int p = rowptr[2*k1+b]; p < rowptr[2*k1+b+1]; ++p){
 					int i_ = A.PermInv(colind[p]);

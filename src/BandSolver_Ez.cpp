@@ -232,7 +232,7 @@ void table_driven(){
 	}while(0)
 
 SPB::BandSolver_Ez::BandSolver_Ez(double Lr[4]):BandSolver(Lattice2(Lr)),L(Lr),
-	N(0),B(NULL),Atmp(NULL),
+	N(0),B(NULL),A(NULL),ldl(),
 	valid_A_numeric(false),
 	last_shift(0)
 {
@@ -248,24 +248,18 @@ SPB::BandSolver_Ez::~BandSolver_Ez(){
 	free(ind2cell);
 	free(matind);
 	free(npoles);
-	
-	// delete A
-    if(valid_A_numeric){
-		free(ldl_data.Lp);
-		free(ldl_data.parent);
-		free(ldl_data.Li);
-		free(ldl_data.Lx);
-		free(ldl_data.D);
-	}
 	if(NULL != B){ delete B; }
-	if(NULL != Atmp){ delete Atmp; }
+	if(NULL != A){ delete A; }
 }
 
+size_t SPB::BandSolver_Ez::GetProblemSize() const{
+	return N;
+}
 size_t SPB::BandSolver_Ez::GetSize() const{
 	return N;
 }
 void SPB::BandSolver_Ez::Aop(const std::complex<double> *x, std::complex<double> *y) const{
-	RNP::Sparse::MultMV<'N'>(*Atmp, x, y);
+	RNP::Sparse::MultMV<'N'>(*A, x, y);
 }
 void SPB::BandSolver_Ez::Bop(const std::complex<double> *x, std::complex<double> *y) const{
 	RNP::Sparse::MultMV<'N'>(*B, x, y);
@@ -367,139 +361,65 @@ int SPB::BandSolver_Ez::InvalidateByStructure(){
 	free(matind); matind = NULL;
 	free(npoles); npoles = NULL;
 	
-	if(valid_A_numeric){
-		free(ldl_data.Lp);
-		free(ldl_data.parent);
-		free(ldl_data.Li);
-		free(ldl_data.Lx);
-		free(ldl_data.D);
-	}
 	if(NULL != B){
 		delete B;
-	}
-	if(NULL != Atmp){
-		delete Atmp;
 	}
 	return 0;
 }
 
-void Acol1(int col, int *nnz, int *row_ind, void *data){
-	RNP::Sparse::TCCSMatrix<complex_t> *A = (RNP::Sparse::TCCSMatrix<complex_t>*)data;
-	const int k1 = A->colptr[2*col+0];
-	const int k2 = A->colptr[2*col+1];
-	const int nnz1 = k2-k1;
-	const int nnz2 = A->colptr[2*col+2] - k2;
-	int p1 = 0;
-	int p2 = 0;
-//printf("col = %d\n", col);
-	*nnz = 0;
-	for(; p1 < nnz1 && p2 < nnz2; ){
-		int i1 = A->rowind[k1+p1] / 2;
-		int i2 = A->rowind[k2+p2] / 2;
-//printf(" i1,2 = %d,%d\n", i1, i2);
-		if(i1 < i2){
-			if(i1 >= col){ break; }
-		}else{
-			if(i2 >= col){ break; }
-		}
-		
-		if(i1 < i2){
-			*row_ind = i1;
-			row_ind++;
-			(*nnz)++;
-			p1++;
-		}else if(i1 > i2){
-			*row_ind = i2;
-			row_ind++;
-			(*nnz)++;
-			p2++;
-		}else{
-			*row_ind = i1;
-			row_ind++;
-			(*nnz)++;
-			p1++;
-			p2++;
+
+int SPB::BandSolver_Ez::GetMaxBlockSize() const{
+	return 2;
+}
+int SPB::BandSolver_Ez::GetMaxNNZPerRow() const{
+	return N;
+}
+int SPB::BandSolver_Ez::BeginBlockSymbolic() const{
+	assembly_data.i = 0;
+	assembly_data.j = 0;
+	assembly_data.k = 0;
+}
+int SPB::BandSolver_Ez::BeginBlockNumeric() const{
+	assembly_data.i = 0;
+	assembly_data.j = 0;
+	assembly_data.k = 0;
+}
+int SPB::BandSolver_Ez::GetNextBlockSymbolic(int *rowptr, int *colind) const{
+	if(assembly_data.i >= N){ return 0; }
+	rowptr[0] = A->colptr[assembly_data.i];
+	rowptr[1] = A->colptr[assembly_data.i+1];
+	rowptr[2] = A->colptr[assembly_data.i+2];
+	for(int r = 0; r < 2; ++r){
+		for(int p = rowptr[r]; p < rowptr[r+1]; ++p){
+			*colind = A->rowind[p];
+			colind++;
 		}
 	}
+	rowptr[1] -= rowptr[0];
+	rowptr[2] -= rowptr[0];
+	rowptr[0] = 0;
+	assembly_data.i += 2;
+	return 2;
 }
-void Acol2(int col, int *nnz, int *row_ind, double *row_val, void *data){
-	RNP::Sparse::TCCSMatrix<complex_t> *A = (RNP::Sparse::TCCSMatrix<complex_t>*)data;
-	const int k1 = A->colptr[2*col+0];
-	const int k2 = A->colptr[2*col+1];
-	const int nnz1 = k2-k1;
-	const int nnz2 = A->colptr[2*col+2] - k2;
-	int p1 = 0;
-	int p2 = 0;
-//printf("col = %d\n", col);
-	
-	*nnz = 0;
-	for(; p1 < nnz1 && p2 < nnz2;){
-		int i1raw = A->rowind[k1+p1];
-		int i1 = i1raw / 2;
-		int i1off = i1raw % 2;
-		int i2raw = A->rowind[k2+p2];
-		int i2 = i2raw / 2;
-		int i2off = i2raw % 2;
-		if(i1 < i2){
-			if(i1 > col){ break; }
-		}else{
-			if(i2 > col){ break; }
+int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t *value) const{
+	if(assembly_data.i >= N){ return 0; }
+	rowptr[0] = A->colptr[assembly_data.i];
+	rowptr[1] = A->colptr[assembly_data.i+1];
+	rowptr[2] = A->colptr[assembly_data.i+2];
+	for(int r = 0; r < 2; ++r){
+		for(int p = rowptr[r]; p < rowptr[r+1]; ++p){
+			*colind = A->rowind[p];
+			colind++;
+			*value = A->values[p];
+			value++;
 		}
-		
-		int p1inc = 0;
-		int p2inc = 0;
-		
-		for(int j = 0; j < 8; ++j){ row_val[j] = 0; }
-		
-		if(i1 < i2){
-			*row_ind = i1;
-			row_val[2*(0+i1off)+0] = A->values[k1+p1].real();
-			row_val[2*(0+i1off)+1] = A->values[k1+p1].imag();
-//printf("A(%d,%d) = ", i1, col); C2PRINT(row_val);
-			row_ind++;
-			row_val += 8;
-			(*nnz)++;
-			p1++;
-		}else if(i1 > i2){
-			*row_ind = i2;
-			row_val[2*(2+i2off)+0] = A->values[k2+p2].real();
-			row_val[2*(2+i2off)+1] = A->values[k2+p2].imag();
-//printf("A(%d,%d) = ", i2, col); C2PRINT(row_val);
-			row_ind++;
-			row_val += 8;
-			(*nnz)++;
-			p2++;
-		}else{
-			*row_ind = i1;
-			if(i1 == col){ // diag is full
-				row_val[2*(0)+0] = A->values[k1+p1].real();
-				row_val[2*(0)+1] = A->values[k1+p1].imag();
-				row_val[2*(1)+0] = A->values[k1+p1+1].real();
-				row_val[2*(1)+1] = A->values[k1+p1+1].imag();
-				row_val[2*(2)+0] = A->values[k2+p2].real();
-				row_val[2*(2)+1] = A->values[k2+p2].imag();
-				row_val[2*(3)+0] = A->values[k2+p2+1].real();
-				row_val[2*(3)+1] = A->values[k2+p2+1].imag();
-//printf("A(%d,%d) = ", i1, col); C2PRINT(row_val);
-			}else{
-				row_val[2*(0+i1off)+0] = A->values[k1+p1].real();
-				row_val[2*(0+i1off)+1] = A->values[k1+p1].imag();
-				row_val[2*(2+i2off)+0] = A->values[k2+p2].real();
-				row_val[2*(2+i2off)+1] = A->values[k2+p2].imag();
-//printf("A(%d,%d) = ", i1, col); C2PRINT(row_val);
-			}
-			row_ind++;
-			row_val += 8;
-			(*nnz)++;
-			p1++;
-			p2++;
-			if(i1 == col){ break; }
-		}
-		p1 += p1inc;
-		p2 += p2inc;
-	}fflush(stdout);
+	}
+	rowptr[1] -= rowptr[0];
+	rowptr[2] -= rowptr[0];
+	rowptr[0] = 0;
+	assembly_data.i += 2;
+	return 2;
 }
-
 
 int SPB::BandSolver_Ez::MakeASymbolic(){
 	const size_t Ngrid = res[0] * res[1];
@@ -873,57 +793,14 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 		}
 	}
 	B = new sparse_t(N,N, Bmap);
-	Atmp = new sparse_t(N,N, Amap);
-	if(1){
-		std::cout << "A="; RNP::Sparse::PrintSparseMatrix(*Atmp) << ";" << std::endl;
+	A = new sparse_t(N,N, Amap);
+	if(0){
+		std::cout << "A="; RNP::Sparse::PrintSparseMatrix(*A) << ";" << std::endl;
 		std::cout << "B="; RNP::Sparse::PrintSparseMatrix(*B) << ";" << std::endl;
 		exit(0);
 	}
 	
-	ldl_data.Lp = (int*)malloc(sizeof(int) * (N+1));
-	ldl_data.parent = (int*)malloc(sizeof(int) * N);
-	ldl_data.D  = (double*)malloc(sizeof(double) * 4*N);
-	
-	int *Lnz = (int*)malloc(sizeof(int) * N);
-	int *Flag = (int*)malloc(sizeof(int) * N);
-	int *Pattern = (int*)malloc(sizeof(int) * N);
-	double *Y = (double*)malloc(sizeof(double) * 4*N);
-	int *rowind = (int*)malloc(sizeof(int) * N);
-	double *rowval = (double*)malloc(sizeof(double) * 8*N);
-	LDL_symbolic(N/2, N, &Acol1, ldl_data.Lp, ldl_data.parent, Lnz, Flag, rowind, (void*)Atmp);
-	const int lnz = ldl_data.Lp[N/2];
-	ldl_data.Li = (int*)malloc(sizeof(int) * lnz);
-	ldl_data.Lx = (double*)malloc(sizeof(double) * 8*lnz);
-	LDL_numeric(N/2, N, &Acol2, ldl_data.Lp, ldl_data.parent, Lnz, ldl_data.Li, ldl_data.Lx, ldl_data.D, Y, Pattern, Flag, rowind, rowval, (void*)Atmp);
-	
-	// It would appear that the matrix remains singular (well, the D matrix)
-	// even with all the extra constraints. This only seems to happen at
-	// zero shift, so we just have to avoid a target frequency of zero at
-	// the Gamma point.
-	
-	/*
-	if(AtGamma){ // last part needs zeroing
-		double *d = (double*)ldl_data.D;
-		for(int j = 0; j < n_constraint; ++j){
-			int k = 4*N-4*n_constraint+4*j;
-			d[k+0] = 0;
-			d[k+1] = 0;
-			d[k+2] = 0;
-			d[k+3] = 0;
-		}
-	}*/
-	/*
-	for(int j = 0; j < N/2; j+=8){
-		double *d = (double*)ldl_data.D;
-		C2PRINT(&d[j]);
-	}
-	*/
-	free(rowval);
-	free(rowind);
-	free(Y);
-	free(Pattern);
-	free(Flag);
-	free(Lnz);
+	ldl.Factorize(*this);
 	
 	valid_A_numeric = true;
 	
@@ -934,9 +811,7 @@ void SPB::BandSolver_Ez::ShiftInv(const complex_t &shift, const complex_t *x, co
 	int info;
 	RNP::TBLAS::Copy(N, x,1, y,1);
 	
-	LDL_lsolve(N/2, (double*)y, ldl_data.Lp, ldl_data.Li, ldl_data.Lx);
-	LDL_dsolve(N/2, (double*)y, ldl_data.D);
-	LDL_ltsolve(N/2, (double*)y, ldl_data.Lp, ldl_data.Li, ldl_data.Lx);
+	ldl.Solve(y);
 	/*
 	complex_t *res = new complex_t[N];
 	double *Y = (double*)res;
@@ -980,6 +855,6 @@ int SPB::BandSolver_Ez::UpdateA(const double k[2]){
 	return 0;
 }
 
-size_t SPB::BandSolver_Ez::GetProblemSize() const{
+int SPB::BandSolver_Ez::GetN() const{
 	return N;
 }

@@ -10,6 +10,8 @@
 extern "C" {
 #include "ShapeSet.h"
 }
+#include "HermitianMatrixProvider.h"
+#include "LDL2.h"
 
 #define SPB_VERB(LVL, STR, ...) do{ \
 		if(verbosity >= LVL){ \
@@ -222,7 +224,7 @@ public:
 	int IRASolve(size_t n);
 };
 
-class BandSolver_Ez : public BandSolver{
+class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 	typedef RNP::Sparse::TCCSMatrix<complex_t> sparse_t;
 	Lattice2 L;
 	
@@ -254,11 +256,18 @@ class BandSolver_Ez : public BandSolver{
 	// npoles[q] is the number of poles at cell index q.
 	int *npoles;
 
-	struct{
-		int *Lp, *parent, *Li;
-		double *Lx, *D;
-	} ldl_data;
-	sparse_t *B, *Atmp;
+	sparse_t *B, *A;
+	LDL2 ldl;
+	
+	mutable struct{
+		complex_t Bloch[2];
+		int constraint_offset;
+		int n_constraints;
+		int i, j, k; // k=0 means non-constraints, k=1 means constraint block
+		int max_block_size;
+		int max_nnz_per_row;
+	} assembly_data;
+	
 	// When structure changes, invalidate A, B, ind
 	// When K changes, symbolic A still good, need to update it
 	// When shift changes, symbolic A still good, numeric needs regenerating
@@ -280,6 +289,7 @@ protected:
 	void Randvec(complex_t *to) const;
 	void Orth(complex_t *x) const;
 	void ShiftInv(const complex_t &shift, const complex_t *from, complex_t *to) const;
+	int GetN() const;
 	size_t GetProblemSize() const;
 public:
 	BandSolver_Ez(double Lr[4]);
@@ -291,6 +301,14 @@ public:
 	
 	void Op(size_t n, const complex_t &shift, const complex_t *from, complex_t *to) const;
 	void OpForw(size_t n, const complex_t &shift, const complex_t *from, complex_t *to) const;
+	
+	
+	int GetMaxBlockSize() const;
+	int GetMaxNNZPerRow() const;
+	int BeginBlockSymbolic() const;
+	int GetNextBlockSymbolic(int *rowptr, int *colind) const;
+	int BeginBlockNumeric() const;
+	int GetNextBlockNumeric(int *rowptr, int *colind, complex_t *value) const;
 };
 
 }; // namespace SPB
