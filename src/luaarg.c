@@ -8,6 +8,10 @@
 
 #include <stdio.h>
 
+#ifdef WIN32
+#define strdup _strdup
+#endif
+
 typedef void (*luaarg_handler)(lua_State *L, int index, void *val);
 
 static void luaarg_handler_table(lua_State *L, int index, void *val){
