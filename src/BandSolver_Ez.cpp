@@ -123,6 +123,7 @@ static const int lattice_tab[] = {
 }
 static const int field_tab[] = {
 	// field, Bval, Nterms, Edir
+	// -------------------------
 	// field = which field is on the LHS
 	// Bval = 0 means B is 0
 	//        1 means B is 1
@@ -425,7 +426,6 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 	const size_t Ngrid = res[0] * res[1];
 	
 	const double klen = hypot(last_k[0], last_k[1]);
-	const bool AtGamma = (klen < std::numeric_limits<double>::epsilon() * L.CharacteristicKLength());
 	
 	if(NULL != ind2cell){ free(ind2cell); }
 	if(NULL != cell2ind){ free(cell2ind); }
@@ -437,9 +437,7 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 	npoles = (int*)malloc(sizeof(int) * Ngrid);
 
 	// Prepare the indexing
-	std::map<size_t,size_t> mat_to_pole_offset;
 	std::set<size_t> used_mat;
-	int constraint_off = 0, n_constraint = 0;
 	{
 		{ // use cell2ind to temporarily hold the forward permutation
 			int a[2] = {res[1], 1};
@@ -468,9 +466,7 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 					const Material& curmat = material[tag];
 					for(int pi = 0; pi < curmat.poles.size(); ++pi){
 						num_poles++;
-						//if(0 != curmat.poles[pi].omega_0){
-							num_poles++;
-						//}
+						num_poles++;
 					}
 					used_mat.insert(tag);
 				}
@@ -481,13 +477,10 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 		
 		int next_pole_offset = 0;
 		for(std::set<size_t>::const_iterator i = used_mat.begin(); i != used_mat.end(); ++i){
-			mat_to_pole_offset[*i] = next_pole_offset;
 			const Material& curmat = material[*i];
 			for(int pi = 0; pi < curmat.poles.size(); ++pi){
 				next_pole_offset++;
-				//if(0 != curmat.poles[pi].omega_0){
-					next_pole_offset++;
-				//}
+				next_pole_offset++;
 			}
 		}
 		
@@ -503,11 +496,6 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 			next_index += NUM_EH + NUM_E*npoles[q];
 		}
 		N = next_index;
-		if(AtGamma){
-			constraint_off = N;
-			n_constraint = NUM_EH + 2*NUM_E*next_pole_offset;
-			N += n_constraint;
-		}
 	}
 	
 	sparse_t::entry_map_t Amap;
@@ -590,11 +578,6 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 						row = cell2ind[IDX(i,j+1)] + DIVH_OFF;
 						ASET(row,col, coeff);
 					}
-					
-					if(constraint_off){
-						ASET(constraint_off+HY_OFF, col, complex_t(0, 1));
-						ASET(col, constraint_off+HY_OFF, complex_t(0,-1));
-					}
 				}
 				
 				{ // Set the divH column
@@ -631,11 +614,6 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 						ASET(row,col, -coeff);
 						row = row0 + HX_OFF;
 						ASET(row,col, coeff);
-					}
-					
-					if(constraint_off){
-						ASET(constraint_off+DIVH_OFF, col, complex_t(0, 1));
-						ASET(col, constraint_off+DIVH_OFF, complex_t(0,-1));
 					}
 				}
 				
@@ -679,11 +657,6 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 						row = cell2ind[IDX(i+1,j)] + HY_OFF;
 						ASET(row,col, coeff);
 					}
-					
-					if(constraint_off){
-						ASET(constraint_off+EZ_OFF, col, complex_t(0, 1));
-						ASET(col, constraint_off+EZ_OFF, complex_t(0,-1));
-					}
 				}
 				
 				{ // Set the Hx column
@@ -719,11 +692,6 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 						row = row0 + EZ_OFF;
 						ASET(row,col, -coeff);
 					}
-					
-					if(constraint_off){
-						ASET(constraint_off+HX_OFF, col, complex_t(0, 1));
-						ASET(col, constraint_off+HX_OFF, complex_t(0,-1));
-					}
 
 					ASET(col,col, -target);
 				}
@@ -744,51 +712,23 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 						for(int pi = 0; pi < curmat.poles.size(); ++pi){
 							const LorentzPole &pole = material[m].poles[pi];
 //std::cout << "\t" << pi << "\t" << pole.omega_0 << "\t" << pole.omega_p << std::endl;
-							int V_off = 1;
-							
-							if(0 != pole.omega_0){
-								ASET(row,row, -target*eps_z);
-								ASET(row+V_off,row, complex_t(0., pole.omega_0) * eps_z);
-								ASET(row,row+V_off, complex_t(0.,-pole.omega_0) * eps_z);
-								BSET(row,row, eps_z);
-//std::cout << "P!=0, V row = " << row+V_off << std::endl;
-							}else{
-								ASET(row,row, 0.);
-								ASET(row+V_off,row, complex_t(0., 1));
-								ASET(row,row+V_off, complex_t(0.,-1));
-								BSET(row,row, 0.);
-//std::cout << "P=0, V row = " << row+V_off << std::endl;
-							}
-							ASET(row0+EZ_OFF, row+V_off, complex_t(0.,-pole.omega_p) * eps_z);
-							ASET(row+V_off, row0+EZ_OFF, complex_t(0., pole.omega_p) * eps_z);
-							ASET(row+V_off,row+V_off, -target*eps_z);
-							BSET(row+V_off,row+V_off, eps_z);
+
 						
-							if(constraint_off){
-								int constraint_row = constraint_off + NUM_EH + mat_to_pole_offset[m] + 2*pi;
-								if(0 != pole.omega_0){
-									ASET(constraint_row, row+0, complex_t(0, -1));
-									ASET(row+0, constraint_row, complex_t(0,  1));
-								}
-								constraint_row++;
-								ASET(constraint_row, row+V_off, complex_t(0, -1));
-								ASET(row+V_off, constraint_row, complex_t(0,  1));
-							}
+							ASET(row,row, -target*eps_z);
+							ASET(row+1,row, complex_t(0., pole.omega_0) * eps_z);
+							ASET(row,row+1, complex_t(0.,-pole.omega_0) * eps_z);
+							BSET(row,row, eps_z);
+//std::cout << "P!=0, V row = " << row+V_off << std::endl;
+							ASET(row0+EZ_OFF, row+1, complex_t(0.,-pole.omega_p) * eps_z);
+							ASET(row+1, row0+EZ_OFF, complex_t(0., pole.omega_p) * eps_z);
+							ASET(row+1,row+1, -target*eps_z);
+							BSET(row+1,row+1, eps_z);
 						
 							row += 2;
 						}
 					}
 					matbits >>= 4;
 				}
-			}
-		}
-		for(int i = 0; i < n_constraint; ++i){
-			BSET(constraint_off+i,constraint_off+i, 0.);
-			ASET(constraint_off+i,constraint_off+i, 0.);
-			if(0 == i%2){
-				ASET(constraint_off+i+1,constraint_off+i, complex_t(0,0));
-			}else{
-				ASET(constraint_off+i-1,constraint_off+i, complex_t(0,0));
 			}
 		}
 	}
