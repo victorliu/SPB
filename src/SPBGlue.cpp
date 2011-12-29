@@ -173,6 +173,8 @@ int SPB_BandSolver_SetTargetFrequency(SPB_BandSolver *S, double freq){
 	return 0;
 }
 int SPB_BandSolver_SetTargetFrequencyRange(SPB_BandSolver *S, double freq0, double freq1){
+	if(NULL == S){ return -1; }
+	S->S->SetTargetFrequency(0.5*(freq0 + freq1));
 	return -1;
 }
 int SPB_BandSolver_SetVerbosity(SPB_BandSolver *S, int v){
