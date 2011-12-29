@@ -34,6 +34,7 @@ int SPB::BandSolver::AddShape(const Shape &s, const std::string &matname){
 	}else{
 		return -2;
 	}
+	return 0;
 }
 
 void SPB::BandSolver::SetResolution(size_t *N){
@@ -49,6 +50,7 @@ int SPB::BandSolver::AddMaterialLorentzPole(const char *name, const LorentzPole 
 	}else{
 		return -1;
 	}
+	return 0;
 }
 
 void SPB::BandSolver::SetNumBands(size_t k){
