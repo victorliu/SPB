@@ -1,5 +1,6 @@
 #include "LDL2.h"
 #include <cstdlib>
+//#include <iostream>
 
 LDL2::LDL2():
 	Lp(NULL),Parent(NULL),Lnz(NULL),
@@ -114,8 +115,8 @@ int LDL2::Analyze(const HermitianMatrixProvider& A){
 		(A)[2] = (B)[2]; (A)[3] = (B)[3]; \
 	}while(0)
 #define C2SETH(A,B) do{ \
-		(A)[0] = std::conj((B)[0]); (A)[1] = std::conj((B)[1]); \
-		(A)[2] = std::conj((B)[2]); (A)[3] = std::conj((B)[3]); \
+		(A)[0] = std::conj((B)[0]); (A)[1] = std::conj((B)[2]); \
+		(A)[2] = std::conj((B)[1]); (A)[3] = std::conj((B)[3]); \
 	}while(0)
 
 // A -= B*C
@@ -176,6 +177,7 @@ int LDL2::Factorize(const HermitianMatrixProvider& A){
 	int nr;
 	int len;
 	while(nr = A.GetNextBlockNumeric(rowptr, colind, colval)){
+		nr /= 2;
 		for(int k1 = 0; k1 < nr; ++k1, ++k){
 			C2ZERO(&Y[4*k]); // Y(0:k) is now all zero
 			int top = n;     // stack for pattern is empty
@@ -224,6 +226,8 @@ int LDL2::Factorize(const HermitianMatrixProvider& A){
 		}
 	}
 	for(k = 0; k < n; k++){
+		//std::cout << "[ " << D[4*k+0] << ", " << D[4*k+2] << std::endl;
+		//std::cout << "  " << D[4*k+1] << ", " << D[4*k+3] << " ]" << std::endl;
 		C2INV(&D[4*k]);
 	}
 	
