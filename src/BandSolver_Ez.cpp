@@ -592,8 +592,8 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 			for(int j = 0; j < res[1]; ++j){
 				const double fj = ((double)j/(double)res[1]) - 0.5;
 				const int q = IDX(i,j);
-				//ind2cell[2*cell2ind[q]+1] = q;
-				ind2cell[2*q+1] = q;
+				ind2cell[2*cell2ind[q]+1] = q;
+				//ind2cell[2*q+1] = q;
 				
 				// get materials of this cell (for now, simple pointwise check)
 				matind[q] = 0;
