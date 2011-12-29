@@ -9,7 +9,14 @@
 #include <stdio.h>
 
 #ifdef WIN32
-#define strdup _strdup
+//#define STRDUP _strdup
+char *STRDUP (const char *s) {
+    char *d = malloc (strlen (s) + 1);   // Space for length plus nul
+    if (d == NULL) return NULL;          // No memory
+    strcpy (d,s);                        // Copy the characters
+    return d;                            // Return the new string
+}
+
 #endif
 
 typedef void (*luaarg_handler)(lua_State *L, int index, void *val);
@@ -25,7 +32,12 @@ void luaarg_handler_double(lua_State *L, int index, void *val){
 }
 void luaarg_handler_string(lua_State *L, int index, void *val){
 	char **buf = (char**)val;
-	*buf = strdup(luaL_checkstring(L, index));
+	const char *str = luaL_checkstring(L, index);
+	if(NULL != str){
+		*buf = STRDUP(str);
+	}else{
+		*buf = NULL;
+	}
 }
 void luaarg_handler_double_vec2(lua_State *L, int index, void *val){
 	int i;
