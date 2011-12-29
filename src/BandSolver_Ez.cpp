@@ -233,7 +233,7 @@ void table_driven(){
 	}while(0)
 
 SPB::BandSolver_Ez::BandSolver_Ez(double Lr[4]):BandSolver(Lattice2(Lr)),L(Lr),
-	N(0),B(NULL),A(NULL),ldl(),
+	N(0),ldl(),
 	valid_A_numeric(false),
 	last_shift(0)
 {
@@ -244,26 +244,16 @@ SPB::BandSolver_Ez::BandSolver_Ez(double Lr[4]):BandSolver(Lattice2(Lr)),L(Lr),
 }
 
 SPB::BandSolver_Ez::~BandSolver_Ez(){
-	
 	free(cell2ind);
 	free(ind2cell);
 	free(matind);
 	free(npoles);
-	if(NULL != B){ delete B; }
-	if(NULL != A){ delete A; }
 }
 
-size_t SPB::BandSolver_Ez::GetProblemSize() const{
-	return N;
-}
 size_t SPB::BandSolver_Ez::GetSize() const{
 	return N;
 }
 void SPB::BandSolver_Ez::Aop(const std::complex<double> *x, std::complex<double> *y) const{
-	RNP::Sparse::MultMV<'N'>(*A, x, y);
-}
-void SPB::BandSolver_Ez::Bop(const std::complex<double> *x, std::complex<double> *y) const{
-	RNP::Sparse::MultMV<'N'>(*B, x, y);
 }
 void SPB::BandSolver_Ez::PrintField(const std::complex<double> *y, const char *filename) const{
 	const int Ngrid = res[0]*res[1];
@@ -356,77 +346,230 @@ int SPB::BandSolver_Ez::OutputEpsilon(int *res, const char *filename, const char
 
 	
 int SPB::BandSolver_Ez::InvalidateByStructure(){
-	
 	free(cell2ind); cell2ind = NULL;
 	free(ind2cell); ind2cell = NULL;
 	free(matind); matind = NULL;
 	free(npoles); npoles = NULL;
 	
-	if(NULL != B){
-		delete B;
-	}
 	return 0;
 }
 
 
 int SPB::BandSolver_Ez::GetMaxBlockSize() const{
-	return 2;
+	return assembly_data.max_block_size;
 }
 int SPB::BandSolver_Ez::GetMaxNNZPerRow() const{
-	return N;
+	return assembly_data.max_nnz_per_row;
 }
 int SPB::BandSolver_Ez::BeginBlockSymbolic() const{
-	assembly_data.i = 0;
-	assembly_data.j = 0;
-	assembly_data.k = 0;
+	assembly_data.p = 0;
+	return res[0]*res[1];
 }
 int SPB::BandSolver_Ez::BeginBlockNumeric() const{
-	assembly_data.i = 0;
-	assembly_data.j = 0;
-	assembly_data.k = 0;
+	assembly_data.p = 0;
+	return res[0]*res[1];
 }
 int SPB::BandSolver_Ez::GetNextBlockSymbolic(int *rowptr, int *colind) const{
-	if(assembly_data.i >= N){ return 0; }
-	rowptr[0] = A->colptr[assembly_data.i];
-	rowptr[1] = A->colptr[assembly_data.i+1];
-	rowptr[2] = A->colptr[assembly_data.i+2];
-	for(int r = 0; r < 2; ++r){
-		for(int p = rowptr[r]; p < rowptr[r+1]; ++p){
-			*colind = A->rowind[p];
-			colind++;
-		}
-	}
-	rowptr[1] -= rowptr[0];
-	rowptr[2] -= rowptr[0];
-	rowptr[0] = 0;
-	assembly_data.i += 2;
-	return 2;
+	return GetNextBlockNumeric(rowptr, colind, NULL);
 }
 int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t *value) const{
-	if(assembly_data.i >= N){ return 0; }
-	rowptr[0] = A->colptr[assembly_data.i];
-	rowptr[1] = A->colptr[assembly_data.i+1];
-	rowptr[2] = A->colptr[assembly_data.i+2];
-	for(int r = 0; r < 2; ++r){
-		for(int p = rowptr[r]; p < rowptr[r+1]; ++p){
-			*colind = A->rowind[p];
-			colind++;
-			*value = A->values[p];
-			value++;
-		}
+	size_t row;
+	complex_t coeff;
+	int next_col = 0, row_count = 0;
+
+	if(assembly_data.p >= res[0]*res[1]){ return 0; }
+	int q = ind2cell[2*assembly_data.p+1];
+	int i,j;
+	UNIDX(q,i,j);
+	
+//std::cerr << "  Getting block for p,q,i,j=" << assembly_data.p << "," << q << "," << i << "," << j << std::endl;
+
+#define NEWROW() do{ *rowptr = next_col; ++rowptr; ++row_count; }while(0)
+#define SETCOL(I,J,W) do{ \
+		*colind = cell2ind[IDX((I),(J))]+(W); colind++; next_col++; \
+	}while(0)
+#define SETVAL(VAL) do{ \
+		if(NULL != value){ *value = (VAL); value++; } \
+	}while(0)
+
+	const int curmat = matind[q]-2;
+	complex_t eps_z(1.);
+	if(curmat >= 0){
+		eps_z = material[curmat].eps_inf.value[8];
 	}
-	rowptr[1] -= rowptr[0];
-	rowptr[2] -= rowptr[0];
-	rowptr[0] = 0;
-	assembly_data.i += 2;
-	return 2;
+	const double Lrl[2] = {
+		hypot(L.Lr[0], L.Lr[1]),
+		hypot(L.Lr[2], L.Lr[3])
+	};
+	const double idr[2] = {
+		(double)res[0] / Lrl[0],
+		(double)res[1] / Lrl[1]
+	};
+
+	
+	// Hy = idr[0] * (Ez[i+1,j,k] - Ez[i,j,k])
+	//    + idr[1] * (divH[i,j,k] - divH[i,j-1,k])
+	NEWROW();
+	{
+		// diagonal
+		SETCOL(i, j, HY_OFF);
+		SETVAL(-target);
+		// Ez coupling
+		coeff = complex_t(0,idr[0]);
+		if(i+1 == res[0]){
+			SETCOL(0, j, EZ_OFF);
+			SETVAL(coeff*assembly_data.Bloch[0]);
+		}else{
+			SETCOL(i+1, j, EZ_OFF);
+			SETVAL(coeff);
+		}
+		SETCOL(i, j, EZ_OFF);
+		SETVAL(-coeff);
+		// divH coupling
+		coeff = complex_t(0,idr[1]);
+		if(0 == j){
+			SETCOL(i, res[1]-1, DIVH_OFF);
+			SETVAL(-coeff/assembly_data.Bloch[1]);
+		}else{
+			SETCOL(i, j-1, DIVH_OFF);
+			SETVAL(-coeff);
+		}
+		SETCOL(i, j, DIVH_OFF);
+		SETVAL(coeff);
+	}
+	// Ez = -idr[1] * (Hx[i,j,k] - Hx[i,j-1,k])
+	//    +  idr[0] * (Hy[i,j,k] - Hy[i-1,j,k])
+	NEWROW();
+	{
+		// diagonal
+		SETCOL(i, j, EZ_OFF);
+		SETVAL(-target*eps_z);
+		// Hy coupling
+		coeff = complex_t(0,idr[0]);
+		if(0 == i){
+			SETCOL(res[0]-1, j, HY_OFF);
+			SETVAL(-coeff/assembly_data.Bloch[0]);
+		}else{
+			SETCOL(i-1, j, HY_OFF);
+			SETVAL(-coeff);
+		}
+		SETCOL(i, j, HY_OFF);
+		SETVAL(coeff);
+		// Hx coupling
+		coeff = complex_t(0,idr[1]);
+		if(0 == j){
+			SETCOL(i, res[1]-1, HX_OFF);
+			SETVAL(coeff/assembly_data.Bloch[1]);
+		}else{
+			SETCOL(i, j-1, HX_OFF);
+			SETVAL(coeff);
+		}
+		SETCOL(i, j, HX_OFF);
+		SETVAL(-coeff);
+	}
+	// Hx += -idr[1] * (Ez[i,j+1,k] - Ez[i,j,k])
+	//    +   idr[0] * (divH[i,j,k] - divH[i-1,j,k])
+	NEWROW();
+	{
+		// diagonal
+		SETCOL(i, j, HX_OFF);
+		SETVAL(-target);
+		// Ez coupling
+		coeff = complex_t(0,idr[1]);
+		if(j+1 == res[1]){
+			SETCOL(i, 0, EZ_OFF);
+			SETVAL(-coeff*assembly_data.Bloch[1]);
+		}else{
+			SETCOL(i, j+1, EZ_OFF);
+			SETVAL(-coeff);
+		}
+		SETCOL(i, j, EZ_OFF);
+		SETVAL(coeff);
+		// divH coupling
+		coeff = complex_t(0,idr[0]);
+		if(0 == i){
+			SETCOL(res[0]-1, j, DIVH_OFF);
+			SETVAL(-coeff/assembly_data.Bloch[0]);
+		}else{
+			SETCOL(i-1, j, DIVH_OFF);
+			SETVAL(-coeff);
+		}
+		SETCOL(i, j, DIVH_OFF);
+		SETVAL(coeff);
+	}
+	// divH = idr[0] * (Hx[i+1,j,k] - Hx[i,j,k])
+	//      + idr[1] * (Hy[i,j+1,k] - Hy[i,j,k])
+	NEWROW();
+	{
+		// diagonal
+		SETCOL(i, j, DIVH_OFF);
+		SETVAL(0.);
+		// Hy coupling
+		coeff = complex_t(0,idr[1]);
+		if(j+1 == res[0]){
+			SETCOL(i, 0, HY_OFF);
+			SETVAL(coeff*assembly_data.Bloch[1]);
+		}else{
+			SETCOL(i, j+1, HY_OFF);
+			SETVAL(coeff);
+		}
+		SETCOL(i, j, HY_OFF);
+		SETVAL(-coeff);
+		// Hx coupling
+		coeff = complex_t(0,idr[0]);
+		if(i+1 == res[0]){
+			SETCOL(0, j, HX_OFF);
+			SETVAL(coeff*assembly_data.Bloch[0]);
+		}else{
+			SETCOL(i+1, j, HX_OFF);
+			SETVAL(coeff);
+		}
+		SETCOL(i, j, HX_OFF);
+		SETVAL(-coeff);
+	}
+	
+	int matbits = matind[q];
+	while(matbits & 0xF){
+		int m = (matbits & 0xF)-1;
+		if(m > 0){
+			m--;
+			const Material& curmat = material[m];
+			int col = NUM_EH;
+			for(int pi = 0; pi < curmat.poles.size(); ++pi){
+				const LorentzPole &pole = material[m].poles[pi];
+				// P = -i w0 eps V
+				NEWROW();
+				{
+					SETCOL(i, j, col);
+					SETVAL(-target*eps_z);
+					SETCOL(i, j, col+1);
+					SETVAL(complex_t(0.,-pole.omega_0) * eps_z);
+				}
+				// V = i w0 eps P - i wp eps E
+				NEWROW();
+				{
+					SETCOL(i, j, col+1);
+					SETVAL(-target*eps_z);
+					SETCOL(i, j, col);
+					SETVAL(complex_t(0., pole.omega_0) * eps_z);
+					SETCOL(i, j, EZ_OFF);
+					SETVAL(complex_t(0.,-pole.omega_p) * eps_z);
+				}
+				col += 2;
+			}
+		}
+		matbits >>= 4;
+	}
+	// finalize with NNZ
+	*rowptr = next_col;
+	
+	assembly_data.p++;
+	return row_count;
 }
 
 int SPB::BandSolver_Ez::MakeASymbolic(){
 	const size_t Ngrid = res[0] * res[1];
-	
-	const double klen = hypot(last_k[0], last_k[1]);
-	
+
 	if(NULL != ind2cell){ free(ind2cell); }
 	if(NULL != cell2ind){ free(cell2ind); }
 	if(NULL != matind){ free(matind); }
@@ -498,13 +641,6 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 		N = next_index;
 	}
 	
-	sparse_t::entry_map_t Amap;
-	sparse_t::entry_map_t Bmap;
-	
-	//complex_t *Adata = (complex_t*)doublecomplexMalloc(Annz);
-	//int *rowind = intMalloc(Annz);
-	//int *colptr = intMalloc((N+1));
-	
 	{
 		//size_t Aind = 0;
 		const double Lrl[2] = {
@@ -522,224 +658,13 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 			complex_t(cos(use_k[0]*2*M_PI), sin(use_k[0]*2*M_PI)),
 			complex_t(cos(use_k[1]*2*M_PI), sin(use_k[1]*2*M_PI))
 		};
-		
-/*
-		Adata[Aind] = (COEFF); \
-		rowind[Aind] = (ROW); \
-		Aind++; \
-*/
-#define ASET(ROW,COL,COEFF) do{ \
-		Amap[sparse_t::index_t((ROW),(COL))] =  (COEFF); \
-	}while(0)
-//Amap[sparse_t::index_t((COL),(ROW))] =  std::conj(COEFF);
-#define ASETCOL(COL,IND) /*colptr[(COL)] = (IND)*/
-#define BSET(ROW,COL,COEFF) Bmap[sparse_t::index_t((ROW),(COL))] = (COEFF)
-
-		size_t row;
-		complex_t coeff;
-
-		for(int i = 0; i < res[0]; ++i){
-			for(int j = 0; j < res[1]; ++j){
-				const int q = IDX(i,j);
-				const int row0 = cell2ind[q];
-				int row = 0, col;
-				
-				{ // Set the Hy column
-					col = row0 + HY_OFF;
-					BSET(col,col, 1);
-					ASET(col,col, -target);
-					
-					// Ez = complex_t(0,-idr[1]) * (Hx[i,j,k] - Hx[i,j-1,k])
-					//    + complex_t(0, idr[0]) * (Hy[i,j,k] - Hy[i-1,j,k])
-					coeff = complex_t(0,idr[0]);
-					if(0 == i){
-						row = row0 + EZ_OFF;
-						ASET(row,col, coeff);
-						row = cell2ind[IDX(res[0]-1,j)] + EZ_OFF;
-						ASET(row,col, -coeff/Bloch[0]);
-					}else{
-						row = cell2ind[IDX(i-1,j)] + EZ_OFF;
-						ASET(row,col, -coeff);
-						row = row0 + EZ_OFF;
-						ASET(row,col, coeff);
-					}
-					
-					// divH = idr[0] * (Hx[i+1,j,k] - Hx[i,j,k])
-					//      + idr[1] * (Hy[i,j+1,k] - Hy[i,j,k]) <--
-					coeff = complex_t(0,idr[1]);
-					if(j+1 == res[0]){
-						row = cell2ind[IDX(i,0)] + DIVH_OFF;
-						ASET(row,col, coeff*Bloch[1]);
-						row = row0 + DIVH_OFF;
-						ASET(row,col, -coeff);
-					}else{
-						row = row0 + DIVH_OFF;
-						ASET(row,col, -coeff);
-						row = cell2ind[IDX(i,j+1)] + DIVH_OFF;
-						ASET(row,col, coeff);
-					}
-				}
-				
-				{ // Set the divH column
-					int col = row0 + DIVH_OFF;
-					ASETCOL(col,Aind);
-					BSET(col,col, 0);
-					ASET(col,col, complex_t(0.));
-
-					// H += i grad divH
-					// Hx += idr[0] * (divH[i,j,k] - divH[i-1,j,k])
-					// Hy += idr[1] * (divH[i,j,k] - divH[i,j-1,k])
-					
-					coeff = complex_t(0,idr[1]);
-					if(0 == j){
-						row = row0 + HY_OFF;
-						ASET(row,col, coeff);
-						row = cell2ind[IDX(i,res[1]-1)] + HY_OFF;
-						ASET(row,col, -coeff/Bloch[1]);
-					}else{
-						row = cell2ind[IDX(i,j-1)] + HY_OFF;
-						ASET(row,col, -coeff);
-						row = row0 + HY_OFF;
-						ASET(row,col, coeff);
-					}
-					
-					coeff = complex_t(0,idr[0]);
-					if(0 == i){
-						row = row0 + HX_OFF;
-						ASET(row,col, coeff);
-						row = cell2ind[IDX(res[0]-1,j)] + HX_OFF;
-						ASET(row,col, -coeff/Bloch[0]);
-					}else{
-						row = cell2ind[IDX(i-1,j)] + HX_OFF;
-						ASET(row,col, -coeff);
-						row = row0 + HX_OFF;
-						ASET(row,col, coeff);
-					}
-				}
-				
-				{ // Set the Ez column
-					col = row0 + EZ_OFF;
-					ASETCOL(col,Aind);
-					
-					const int curmat = matind[q]-2;
-					complex_t eps_z(1.);
-					if(curmat >= 0){
-						eps_z = material[curmat].eps_inf.value[8];
-					}
-					BSET(col,col, eps_z);
-
-					ASET(col,col, -target*eps_z);
-					
-					// Hx = complex_t(0,-idr[1]) * (Ez[i,j+1,k] - Ez[i,j,k])
-					coeff = complex_t(0,idr[1]);
-					if(j+1 == res[1]){
-						row = cell2ind[IDX(i,0)] + HX_OFF;
-						ASET(row,col, -coeff*Bloch[1]);
-						row = row0 + HX_OFF;
-						ASET(row,col, coeff);
-					}else{
-						row = row0 + HX_OFF;
-						ASET(row,col, coeff);
-						row = cell2ind[IDX(i,j+1)] + HX_OFF;
-						ASET(row,col, -coeff);
-					}
-					
-					// Hy = complex_t(0, idr[0]) * (Ez[i+1,j,k] - Ez[i,j,k])
-					coeff = complex_t(0,idr[0]);
-					if(i+1 == res[0]){
-						row = cell2ind[IDX(0,j)] + HY_OFF;
-						ASET(row,col, coeff*Bloch[0]);
-						row = row0 + HY_OFF;
-						ASET(row,col, -coeff);
-					}else{
-						row = row0 + HY_OFF;
-						ASET(row,col, -coeff);
-						row = cell2ind[IDX(i+1,j)] + HY_OFF;
-						ASET(row,col, coeff);
-					}
-				}
-				
-				{ // Set the Hx column
-					int col = row0 + HX_OFF;
-					BSET(col,col, 1);
-					
-					// divH = idr[0] * (Hx[i+1,j,k] - Hx[i,j,k]) <--
-					//      + idr[1] * (Hy[i,j+1,k] - Hy[i,j,k])
-					coeff = complex_t(0,idr[0]);
-					if(i+1 == res[0]){
-						row = cell2ind[IDX(0,j)] + DIVH_OFF;
-						ASET(row,col, coeff*Bloch[0]);
-						row = row0 + DIVH_OFF;
-						ASET(row,col, -coeff);
-					}else{
-						row = row0 + DIVH_OFF;
-						ASET(row,col, -coeff);
-						row = cell2ind[IDX(i+1,j)] + DIVH_OFF;
-						ASET(row,col, coeff);
-					}
-					
-					// Ez = complex_t(0,-idr[1]) * (Hx[i,j,k] - Hx[i,j-1,k])
-					//    + complex_t(0, idr[0]) * (Hy[i,j,k] - Hy[i-1,j,k])
-					coeff = complex_t(0,idr[1]);
-					if(0 == j){
-						row = row0 + EZ_OFF;
-						ASET(row,col, -coeff);
-						row = cell2ind[IDX(i,res[1]-1)] + EZ_OFF;
-						ASET(row,col, coeff/Bloch[1]);
-					}else{
-						row = cell2ind[IDX(i,j-1)] + EZ_OFF;
-						ASET(row,col, coeff);
-						row = row0 + EZ_OFF;
-						ASET(row,col, -coeff);
-					}
-
-					ASET(col,col, -target);
-				}
-				
-				// Deal with all the poles
-				// oh god that sounds racist
-				row = row0 + NUM_EH;
-				int matbits = matind[q];
-				while(matbits & 0xF){
-					int m = (matbits & 0xF)-1;
-					complex_t eps_z(1.);
-					if(m > 0){
-//std::cout << i << "\t" << j << "\t" << m << std::endl;
-						m--;
-						eps_z = material[m].eps_inf.value[8];
-//std::cout << i << "\t" << j << "\t" << eps_z << std::endl;
-						const Material& curmat = material[m];
-						for(int pi = 0; pi < curmat.poles.size(); ++pi){
-							const LorentzPole &pole = material[m].poles[pi];
-//std::cout << "\t" << pi << "\t" << pole.omega_0 << "\t" << pole.omega_p << std::endl;
-
-						
-							ASET(row,row, -target*eps_z);
-							ASET(row+1,row, complex_t(0., pole.omega_0) * eps_z);
-							ASET(row,row+1, complex_t(0.,-pole.omega_0) * eps_z);
-							BSET(row,row, eps_z);
-//std::cout << "P!=0, V row = " << row+V_off << std::endl;
-							ASET(row0+EZ_OFF, row+1, complex_t(0.,-pole.omega_p) * eps_z);
-							ASET(row+1, row0+EZ_OFF, complex_t(0., pole.omega_p) * eps_z);
-							ASET(row+1,row+1, -target*eps_z);
-							BSET(row+1,row+1, eps_z);
-						
-							row += 2;
-						}
-					}
-					matbits >>= 4;
-				}
-			}
-		}
-	}
-	B = new sparse_t(N,N, Bmap);
-	A = new sparse_t(N,N, Amap);
-	if(0){
-		std::cout << "A="; RNP::Sparse::PrintSparseMatrix(*A) << ";" << std::endl;
-		std::cout << "B="; RNP::Sparse::PrintSparseMatrix(*B) << ";" << std::endl;
-		exit(0);
+		assembly_data.Bloch[0] = Bloch[0];
+		assembly_data.Bloch[1] = Bloch[1];
 	}
 	
+	assembly_data.max_nnz_per_row = 16;
+	assembly_data.max_block_size = NUM_EH + 2*4; // arbitrary hack
+
 	ldl.Factorize(*this);
 	
 	valid_A_numeric = true;
@@ -750,30 +675,27 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 void SPB::BandSolver_Ez::ShiftInv(const complex_t &shift, const complex_t *x, complex_t *y) const{
 	int info;
 	RNP::TBLAS::Copy(N, x,1, y,1);
-	
 	ldl.Solve(y);
-	/*
-	complex_t *res = new complex_t[N];
-	double *Y = (double*)res;
-	for(int i = 0; i < N; i++){
-		res[i] = -x[i];
+}
+void SPB::BandSolver_Ez::Bop(const std::complex<double> *x, std::complex<double> *y) const{
+	for(int i = 0; i < res[0]; ++i){
+		for(int j = 0; j < res[1]; ++j){
+			const int q = IDX(i,j);
+			const int row0 = cell2ind[q];
+			const int curmat = matind[q]-2;
+			complex_t eps_z(1.);
+			if(curmat >= 0){
+				eps_z = material[curmat].eps_inf.value[8];
+			}
+			y[row0+HY_OFF] = x[row0+HY_OFF];
+			y[row0+EZ_OFF] = eps_z*x[row0+EZ_OFF];
+			y[row0+HX_OFF] = x[row0+HX_OFF];
+			y[row0+DIVH_OFF] = 0;
+			for(int k = 0; k < npoles[q]; ++k){
+				y[row0+NUM_EH+k] = eps_z*x[row0+NUM_EH+k];
+			}
+		}
 	}
-	RNP::Sparse::MultMV<'N'>(*Atmp, y, res, complex_t(1.), complex_t(1.));
-	
-	//for(int j = 0; j < N/2; j++){
-	//	printf("Y[%d] = {%.14g+i%.14g %.14g+i%.14g}\n", j, Y[4*j+0], Y[4*j+1], Y[4*j+2], Y[4*j+3]);
-	//}
-	// rnorm = norm (y, inf)
-	double rnorm = 0;
-	for(int i = 0; i < 2*N; i++){
-		double r = (Y[i] > 0) ? (Y[i]) : (-Y[i]);
-		rnorm = (r > rnorm) ? (r) : (rnorm);
-	}
-	printf ("relative maxnorm of residual: %g\n", rnorm);
-	
-	delete [] res;
-	*/
-	//std::cout << "info  = " << info << std::endl;
 }
 
 int SPB::BandSolver_Ez::MakeANumeric(){
@@ -785,9 +707,6 @@ int SPB::BandSolver_Ez::UpdateA(const double k[2]){
 	if(NULL == cell2ind){
 		MakeASymbolic();
 	}
-	if(!valid_A_numeric){
-		MakeANumeric();
-	}
 	if(last_k[0] == k[0] && last_k[1] == k[1]){
 		return 0;
 	}
@@ -795,6 +714,9 @@ int SPB::BandSolver_Ez::UpdateA(const double k[2]){
 	return 0;
 }
 
+size_t SPB::BandSolver_Ez::GetProblemSize() const{
+	return N;
+}
 int SPB::BandSolver_Ez::GetN() const{
 	return N;
 }

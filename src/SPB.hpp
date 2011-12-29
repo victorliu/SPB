@@ -261,7 +261,7 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 	
 	mutable struct{
 		complex_t Bloch[2];
-		int i, j; 
+		int p;
 		int max_block_size;
 		int max_nnz_per_row;
 	} assembly_data;
