@@ -15,10 +15,6 @@ public:
 	virtual int GetMaxBlockSize() const = 0;
 	virtual int GetMaxNNZPerRow() const = 0;
 	
-	// By default, there is no permutation
-	virtual int Perm(int i) const{ return i; };
-	virtual int PermInv(int i) const{ return i; };
-	
 	// Returns number of rows, assumed to always be even
 	// Assumes that diagonal 2x2 blocks are non-singular
 	virtual int BeginBlockSymbolic() const = 0;

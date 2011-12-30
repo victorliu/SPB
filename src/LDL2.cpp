@@ -76,7 +76,8 @@ int LDL2::Analyze(const HermitianMatrixProvider& A){
 			Lnz[k] = 0;
 			for(int b = 0; b < 2; ++b){
 				for(int p = rowptr[2*k1+b]; p < rowptr[2*k1+b+1]; ++p){
-					int i = A.PermInv(colind[p])/2;
+					//int i = A.PermInv(colind[p])/2;
+					int i = colind[p]/2;
 					if(i < k){
 						// follow path from i to root of etree, stop at flagged node
 						for(; Flag[i] != k; i = Parent[i]){
@@ -185,7 +186,8 @@ int LDL2::Factorize(const HermitianMatrixProvider& A){
 			Lnz[k] = 0;      // count of nonzeros in column k of L
 			for(int b = 0; b < 2; ++b){
 				for(int p = rowptr[2*k1+b]; p < rowptr[2*k1+b+1]; ++p){
-					int i_ = A.PermInv(colind[p]);
+					//int i_ = A.PermInv(colind[p]);
+					int i_ = colind[p];
 					int i = i_/2;
 					int ir= i_%2;
 					if(i <= k){
