@@ -1,4 +1,4 @@
-#ifndef _SPB_HPP_INCLUDED_
+ifndef _SPB_HPP_INCLUDED_
 #define _SPB_HPP_INCLUDED_
 
 #include <string>
@@ -286,6 +286,7 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 		//   u1 [ -1 ]
 		//   v1 [  0 ]
 		
+		int type; // 0 for u.v == 0, 1 for u.v < 0, 2 otherwise
 	} mesh;
 	
 	mutable struct{
