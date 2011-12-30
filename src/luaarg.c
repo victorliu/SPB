@@ -24,6 +24,18 @@ typedef void (*luaarg_handler)(lua_State *L, int index, void *val);
 static void luaarg_handler_table(lua_State *L, int index, void *val){
 	luaarg_parse(L, index, (const luaarg_argspec*)val);
 }
+static void luaarg_handler_list(lua_State *L, int index, void *val){
+	luaarg_list_handler *handler = (luaarg_list_handler*)val;
+	luaL_argcheck(L, lua_istable(L,index), index, "Expected list");
+	lua_pushnil(L);
+	while(lua_next(L, index) != 0){
+		if(!handler->func(L, index+1, index+2, handler->data)){
+			lua_pop(L, 1);
+			break;
+		}
+		lua_pop(L, 1);
+	}
+}
 void luaarg_handler_int(lua_State *L, int index, void *val){
 	*(int*)val = luaL_checkint(L, index);
 }
@@ -364,7 +376,9 @@ void luaarg_handler_complex_constitutive_tensor3x3(lua_State *L, int index, void
 
 void luaarg_parse(lua_State *L, int index, const luaarg_argspec *argspec){
 	static const luaarg_handler handler[] = {
+		NULL, NULL,
 		&luaarg_handler_table,
+		&luaarg_handler_list,
 		&luaarg_handler_int,
 		&luaarg_handler_double,
 		&luaarg_handler_string,
@@ -386,15 +400,18 @@ void luaarg_parse(lua_State *L, int index, const luaarg_argspec *argspec){
 	const luaarg_argspec *arg = argspec;
 	if(index < 0){ index += 1+lua_gettop(L); }
 	luaL_argcheck(L, lua_istable(L,index), index, "Expected table (named arguments)");
-	while(NULL != arg->name){
+	while(0 != arg->type){
 		lua_getfield(L, index, arg->name);
+//printf("index=%d, name=%s type=%s top=%d\n", index, arg->name, lua_typename(L, lua_type(L, index+1)), lua_gettop(L)); fflush(stdout);
 		if(lua_isnil(L, index+1) && !arg->optional){
 			lua_pop(L, 1);
 			luaL_error(L, "Could not find required argument: %s\n", arg->name);
-		}else{
-			handler[arg->type](L, index+1, arg->valptr);
-			lua_pushnil(L);
-			lua_setfield(L, index, arg->name);
+		}else if(!lua_isnil(L, index+1)){
+			if(luaarg_type_IGNORE != arg->type){
+				handler[arg->type](L, index+1, arg->valptr);
+				lua_pushnil(L);
+				lua_setfield(L, index, arg->name);
+			}
 		}
 		lua_pop(L, 1);
 		arg++;
