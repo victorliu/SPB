@@ -215,7 +215,7 @@ int SPB_BandSolver_GetFrequencies(const SPB_BandSolver *S, int *n, SPB_complex_p
 	if(fsize < capacity){
 		*n = fsize;
 	}
-	for(size_t i = 0; i < *n; ++i){
+	for(int i = 0; i < *n; ++i){
 #ifdef SPB_USING_C99_COMPLEX
 		z[i] = f[i].real() + f[i].imag() * _Complex_I;
 #else

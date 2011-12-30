@@ -153,13 +153,7 @@ public:
 	virtual void SetShift(double shift) = 0;
 	
 	virtual void Bop(const complex_t *from, complex_t *to) const = 0;
-	
-	////// IRA specific
-	virtual void ShiftInv(const complex_t &shift, const complex_t *from, complex_t *to) const = 0;
-	// ShiftOp is the inverse of ShiftInv (so, ShiftOp is the forward shifted operator A-shift*B
-	// We include this so that implementers are (hopefully) forced to implement the forward FFT-based
-	// operation to compare against manually applying Aop and shift*Bop.
-//	virtual void ShiftOp(const complex_t &shift, const complex_t *from, complex_t *to) const = 0;
+	virtual void ShiftInv(const complex_t *from, complex_t *to) const = 0;
 };
 
 class BandSolver : public EigenOperator, public IntervalEigensolver{
@@ -190,6 +184,7 @@ protected:
 	double target[2];
 	
 	virtual size_t GetProblemSize() const = 0;
+	virtual void StructureChanged(){};
 public:
 	BandSolver(const Lattice &L);
 	virtual ~BandSolver();
@@ -266,6 +261,31 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 		
 		double star_mu[3];
 		// star_mu is hodge star for each edge
+		double star_eps; // same as primal cell area
+		int face[5*2];
+		// face:
+		// for a square lattice:
+		//        sign
+		//   u0 [  1 ]
+		//   v0 [ -1 ]
+		//   w0 [  0 ]
+		//   u1 [ -1 ]
+		//   v1 [  1 ]
+		//   second set of 5 are all zero
+		// for a u.v < 0 lattice:
+		//        sign
+		//   u0 [  1 ]
+		//   v0 [  0 ]
+		//   w0 [ -1 ]
+		//   u1 [  0 ]
+		//   v1 [  1 ]
+		//
+		//   u0 [  0 ]
+		//   v0 [ -1 ]
+		//   w0 [  1 ]
+		//   u1 [ -1 ]
+		//   v1 [  0 ]
+		
 	} mesh;
 	
 	mutable struct{
@@ -282,16 +302,15 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 	// If ind is not NULL, we assume we have an A that is symbolically factored, and B is valid
 	bool valid_A_numeric;
 	
-	int InvalidateByStructure();
-	int MakeASymbolic();
-	int MakeANumeric();
+	void StructureChanged();
+	int MakeMesh();
 	int UpdateA(const double k[2]);
 	
 	void PrintField(const std::complex<double> *x, const char *filename = NULL) const;
 protected:
 	size_t GetSize() const;
 	void Bop(const std::complex<double> *from, std::complex<double> *to) const;
-	void ShiftInv(const complex_t &shift, const complex_t *from, complex_t *to) const;
+	void ShiftInv(const complex_t *from, complex_t *to) const;
 	int GetN() const;
 	size_t GetProblemSize() const;
 public:
@@ -301,10 +320,7 @@ public:
 	void SetResolution(size_t *N){ res[0] = N[0]; res[1] = N[1]; }
 	int OutputEpsilon(int *res, const char *filename, const char *format) const;
 	int SolveK(const double *k);
-	
-	void Op(size_t n, const complex_t &shift, const complex_t *from, complex_t *to) const;
-	void OpForw(size_t n, const complex_t &shift, const complex_t *from, complex_t *to) const;
-	
+		
 	void SetShift(double shift);
 	int GetMaxBlockSize() const;
 	int GetMaxNNZPerRow() const;

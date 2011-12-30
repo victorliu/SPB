@@ -72,7 +72,7 @@ void SPB::BandSolver::SetTargetFrequencyRange(double lower, double upper){
 
 static void op_(size_t n, const complex_t &shift, const complex_t *x, complex_t *y, void *data){
 	const SPB::EigenOperator* op = reinterpret_cast<const SPB::EigenOperator*>(data);
-	op->ShiftInv(shift, x, y);
+	op->ShiftInv(x, y);
 }
 static void bv_(size_t n, const complex_t *x, complex_t *y, void *data){
 	const SPB::EigenOperator* op = reinterpret_cast<const SPB::EigenOperator*>(data);

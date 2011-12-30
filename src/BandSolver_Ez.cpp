@@ -233,8 +233,7 @@ void table_driven(){
 	}while(0)
 
 SPB::BandSolver_Ez::BandSolver_Ez(double Lr[4]):BandSolver(Lattice2(Lr)),L(Lr),
-	N(0),ldl(),
-	valid_A_numeric(false)
+	N(0),ldl()
 {
 	cell2ind = NULL;
 	ind2cell = NULL;
@@ -254,28 +253,27 @@ size_t SPB::BandSolver_Ez::GetSize() const{
 	return N;
 }
 void SPB::BandSolver_Ez::PrintField(const std::complex<double> *y, const char *filename) const{
-	const int Ngrid = res[0]*res[1];
 	std::ostream *out = &std::cout;
 	if(NULL != filename){
 		out = new std::ofstream(filename);
 	}
-	/*
 	for(int i = 0; i < res[0]; ++i){
 		for(int j = 0; j < res[1]; ++j){
+			int q = cell2ind[IDX(i,j)];
 			(*out)
 				<< i << "\t" << j
-				 << "\t" << y[HX_OFF + IDX(i,j)].real()
-				 << "\t" << y[HX_OFF + IDX(i,j)].imag()
-				 << "\t" << y[HY_OFF + IDX(i,j)].real()
-				 << "\t" << y[HY_OFF + IDX(i,j)].imag()
-				 << "\t" << y[EZ_OFF + IDX(i,j)].real()
-				 << "\t" << y[EZ_OFF + IDX(i,j)].imag()
-				 << "\t" << y[DIVH_OFF+IDX(i,j)].real()
-				 << "\t" << y[DIVH_OFF+IDX(i,j)].imag()
+				 << "\t" << y[q+HX_OFF].real()
+				 << "\t" << y[q+HX_OFF].imag()
+				 << "\t" << y[q+HY_OFF].real()
+				 << "\t" << y[q+HY_OFF].imag()
+				 << "\t" << y[q+EZ_OFF].real()
+				 << "\t" << y[q+EZ_OFF].imag()
+				 << "\t" << y[q+DIVH_OFF].real()
+				 << "\t" << y[q+DIVH_OFF].imag()
 				 << "\n";
 		}
 		(*out) << "\n";
-	}*/
+	}
 	if(NULL != filename){
 		delete out;
 	}
@@ -286,13 +284,9 @@ int SPB::BandSolver_Ez::SolveK(const double *k){
 	SPB_VERB(1, "Solving k-point (%.14g, %.14g)\n", k[0], k[1]);
 	ClearSolution();
 	
-	last_k[0] = k[0];
-	last_k[1] = k[1];
 	UpdateA(k);
 	IRASolve(N);
 	
-	last_k[0] = k[0];
-	last_k[1] = k[1];
 	return 0;
 }
 
@@ -335,13 +329,11 @@ int SPB::BandSolver_Ez::OutputEpsilon(int *res, const char *filename, const char
 
 
 	
-int SPB::BandSolver_Ez::InvalidateByStructure(){
+void SPB::BandSolver_Ez::StructureChanged(){
 	free(cell2ind); cell2ind = NULL;
 	free(ind2cell); ind2cell = NULL;
 	free(matind); matind = NULL;
 	free(npoles); npoles = NULL;
-	
-	return 0;
 }
 
 
@@ -363,7 +355,6 @@ int SPB::BandSolver_Ez::GetNextBlockSymbolic(int *rowptr, int *colind) const{
 	return GetNextBlockNumeric(rowptr, colind, NULL);
 }
 int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t *value) const{
-	size_t row;
 	complex_t coeff;
 	int next_col = 0, row_count = 0;
 
@@ -382,7 +373,6 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		if(NULL != value){ *value = (VAL); value++; } \
 	}while(0)
 
-	const int curmat = matind[q]-2;
 	double eps_z = epsval[epsind[q]];
 	const double Lrl[2] = {
 		hypot(L.Lr[0], L.Lr[1]),
@@ -392,7 +382,6 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		(double)res[0] / Lrl[0],
 		(double)res[1] / Lrl[1]
 	};
-
 	
 	// Hy = idr[0] * (Ez[i+1,j,k] - Ez[i,j,k])
 	//    + idr[1] * (divH[i,j,k] - divH[i,j-1,k])
@@ -522,7 +511,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 			m--;
 			const Material& curmat = material[m];
 			int col = NUM_EH;
-			for(int pi = 0; pi < curmat.poles.size(); ++pi){
+			for(size_t pi = 0; pi < curmat.poles.size(); ++pi){
 				const LorentzPole &pole = material[m].poles[pi];
 				// P = -i w0 eps V
 				NEWROW();
@@ -554,7 +543,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 	return row_count;
 }
 
-int SPB::BandSolver_Ez::MakeASymbolic(){
+int SPB::BandSolver_Ez::MakeMesh(){
 	const size_t Ngrid = res[0] * res[1];
 
 	if(NULL != ind2cell){ free(ind2cell); }
@@ -589,8 +578,16 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 	if(fabs(uv) < std::numeric_limits<double>::epsilon()*uxv){
 		mesh.star_mu[0] = ulen/vlen;
 		mesh.star_mu[1] = vlen/ulen;
+		
+		mesh.star_eps = uxv;
+		mesh.face[5*0+0] =  1;
+		mesh.face[5*0+1] = -1;
+		mesh.face[5*0+2] =  0;
+		mesh.face[5*0+3] = -1;
+		mesh.face[5*0+4] =  1;
 	}else{
 		mesh.n_edges = 3;
+		mesh.star_eps = 0.5*uxv;
 		double uvw[2], w[2];
 		if(uv < 0){ // wide angle between u and v
 			// edge w is u+v
@@ -609,6 +606,17 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 			// dual_*len = (|*|^2(u+v+w) - (v^2+u^2+w^2)*) / (2 |uxv|)
 			uvw[0] = 2*w[0];
 			uvw[1] = 2*w[1];
+			
+			mesh.face[5*0+0] =  1;
+			mesh.face[5*0+1] =  0;
+			mesh.face[5*0+2] = -1;
+			mesh.face[5*0+3] =  0;
+			mesh.face[5*0+4] =  1;
+			mesh.face[5*1+0] =  0;
+			mesh.face[5*1+1] = -1;
+			mesh.face[5*1+2] =  1;
+			mesh.face[5*1+3] = -1;
+			mesh.face[5*1+4] =  0;
 		}else{
 			// edge w is v-u
 			mesh.edge[4*2+2*0+0] = 1;
@@ -617,6 +625,17 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 			mesh.edge[4*2+2*1+1] = 1;
 			uvw[0] = 2*Lr[2];
 			uvw[1] = 2*Lr[3];
+			
+			mesh.face[5*0+0] =  1;
+			mesh.face[5*0+1] = -1;
+			mesh.face[5*0+2] =  1;
+			mesh.face[5*0+3] =  0;
+			mesh.face[5*0+4] =  0;
+			mesh.face[5*1+0] =  0;
+			mesh.face[5*1+1] =  0;
+			mesh.face[5*1+2] = -1;
+			mesh.face[5*1+3] = -1;
+			mesh.face[5*1+4] =  1;
 		}
 		const double wlen = hypot(w[0],w[1]);
 		const double uvw2 = ulen*ulen + vlen*vlen + wlen*wlen;
@@ -663,10 +682,7 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 				double eps_z = 1.;
 				if(tag >= 0){
 					const Material& curmat = material[tag];
-					for(int pi = 0; pi < curmat.poles.size(); ++pi){
-						num_poles++;
-						num_poles++;
-					}
+					num_poles += curmat.poles.size();
 					eps_z = curmat.eps_inf.value[8].real();
 				}
 				npoles[q] = num_poles;
@@ -687,14 +703,14 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 		
 		// Now perform the indexing, need to set cell2ind and ind2cell[2*p+0];
 		int next_index = 0;
-		for(int p = 0; p < Ngrid; ++p){
+		for(size_t p = 0; p < Ngrid; ++p){
 			int q = ind2cell[2*p+1];
 			int i,j; UNIDX(q,i,j);
 			ind2cell[2*p+0] = next_index;
 			cell2ind[q] = next_index;
 			
 			// We have Ez, Hx, Hy, divH, plus V,P pairs for each pole
-			next_index += NUM_EH + NUM_E*npoles[q];
+			next_index += NUM_EH + NUM_E*2*npoles[q];
 		}
 		N = next_index;
 	}
@@ -704,13 +720,10 @@ int SPB::BandSolver_Ez::MakeASymbolic(){
 
 	ldl.Factorize(*this);
 	
-	valid_A_numeric = true;
-	
 	return 0;
 }
 
-void SPB::BandSolver_Ez::ShiftInv(const complex_t &shift, const complex_t *x, complex_t *y) const{
-	int info;
+void SPB::BandSolver_Ez::ShiftInv(const complex_t *x, complex_t *y) const{
 	RNP::TBLAS::Copy(N, x,1, y,1);
 	ldl.Solve(y);
 }
@@ -719,13 +732,12 @@ void SPB::BandSolver_Ez::Bop(const std::complex<double> *x, std::complex<double>
 		for(int j = 0; j < res[1]; ++j){
 			const int q = IDX(i,j);
 			const int row0 = cell2ind[q];
-			const int curmat = matind[q]-2;
 			double eps_z = epsval[epsind[q]];
 			y[row0+HY_OFF] = x[row0+HY_OFF];
 			y[row0+EZ_OFF] = eps_z*x[row0+EZ_OFF];
 			y[row0+HX_OFF] = x[row0+HX_OFF];
 			y[row0+DIVH_OFF] = 0;
-			for(int k = 0; k < npoles[q]; ++k){
+			for(int k = 0; k < 2*npoles[q]; ++k){
 				y[row0+NUM_EH+k] = eps_z*x[row0+NUM_EH+k];
 			}
 		}
@@ -734,13 +746,20 @@ void SPB::BandSolver_Ez::Bop(const std::complex<double> *x, std::complex<double>
 
 int SPB::BandSolver_Ez::UpdateA(const double k[2]){
 	//temp hacky
-	InvalidateByStructure();
+	StructureChanged();
 	if(NULL == cell2ind){
-		MakeASymbolic();
+		MakeMesh();
 	}
+	
 	if(last_k[0] == k[0] && last_k[1] == k[1]){
 		return 0;
 	}
+	assembly_data.Bloch[0] = complex_t(cos(k[0]*2*M_PI), sin(k[0]*2*M_PI));
+	assembly_data.Bloch[1] = complex_t(cos(k[1]*2*M_PI), sin(k[1]*2*M_PI));
+	last_k[0] = k[0];
+	last_k[1] = k[1];
+	ldl.Factorize(*this);
+	
 	// do update
 	return 0;
 }
