@@ -14,6 +14,7 @@ SPB: $(SUBDIRS) \
 	z-SPBGlue.o \
 	z-util.o \
 	z-types.o \
+	z-IntervalEigensolver.o \
 	z-BandSolver.o \
 	z-BandSolver_Ez.o
 	$(CXX) $(LDFLAGS) z-*.o $(OBJLIBS) $(LIBS) -o SPB
@@ -32,6 +33,8 @@ z-types.o: types.cpp SPB.hpp
 	$(CXX) $(CXXFLAGS) -c types.cpp -o z-types.o
 z-util.o: util.cpp util.h
 	$(CXX) $(CXXFLAGS) -c util.cpp -o z-util.o
+z-IntervalEigensolver.o: IntervalEigensolver.cpp IntervalEigensolver.h
+	$(CXX) $(CXXFLAGS) -c IntervalEigensolver.cpp -o z-IntervalEigensolver.o
 z-BandSolver.o: BandSolver.cpp SPB.hpp
 	$(CXX) $(CXXFLAGS) -c BandSolver.cpp -o z-BandSolver.o
 z-BandSolver_Ez.o: BandSolver_Ez.cpp SPB.hpp

@@ -11,6 +11,7 @@ extern "C" {
 #include "ShapeSet.h"
 }
 #include "HermitianMatrixProvider.h"
+#include "IntervalEigensolver.h"
 #include "LDL2.h"
 
 #define SPB_VERB(LVL, STR, ...) do{ \
@@ -149,18 +150,9 @@ public:
 class EigenOperator{
 public:
 	virtual size_t GetSize() const = 0;
+	virtual void SetShift(double shift) = 0;
 	
-	// Applies the matrices A and B
-	virtual void Aop(const complex_t *from, complex_t *to) const = 0;
 	virtual void Bop(const complex_t *from, complex_t *to) const = 0;
-	
-	////// JDQZ specific
-	// Preconditioner for A-target*B (not currently used)
-	virtual void Precond(const std::complex<double> &alpha, const std::complex<double> &beta, const std::complex<double> *from, std::complex<double> *to) const = 0;
-	// Generates a random vector in the range of inv(A)*B (not currently used)
-	virtual void Randvec(std::complex<double> *x) const = 0;
-	// Performs orthogonalization against nullspace of B. (not currently used)
-	virtual void Orth(complex_t *x) const = 0;
 	
 	////// IRA specific
 	virtual void ShiftInv(const complex_t &shift, const complex_t *from, complex_t *to) const = 0;
@@ -170,7 +162,7 @@ public:
 //	virtual void ShiftOp(const complex_t &shift, const complex_t *from, complex_t *to) const = 0;
 };
 
-class BandSolver : public EigenOperator{
+class BandSolver : public EigenOperator, public IntervalEigensolver{
 protected:
 	int dim;
 	int res[3];
@@ -194,10 +186,8 @@ protected:
 		size_t n_arnoldi;
 	} IRA_data;
 	size_t n_wanted;
-	complex_t target;
-	int want_interval;
-	complex_t target2; // upper end of interval if want_interval == 1
-	double tol;
+	double approxtol, tol;
+	double target[2];
 	
 	virtual size_t GetProblemSize() const = 0;
 public:
@@ -206,7 +196,8 @@ public:
 	
 	void SetResolution(size_t *N);
 	void SetNumBands(size_t n);
-	void SetTargetFrequency(const complex_t &freq){ target = freq; }
+	void SetTargetFrequencyRange(double lower, double upper);
+	void SetApproximationTolerance(double tolerance){ approxtol = tolerance; }
 	void SetTolerance(double tolerance){ tol = tolerance; }
 	void SetVerbosity(int verb){ verbosity = verb; }
 	
@@ -225,7 +216,7 @@ public:
 };
 
 class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
-	typedef RNP::Sparse::TCCSMatrix<complex_t> sparse_t;
+	typedef SPB::complex_t complex_t;
 	Lattice2 L;
 	
 	size_t N;
@@ -256,14 +247,33 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 	// npoles[q] is the number of poles at cell index q.
 	int *npoles;
 
-	sparse_t *B, *A;
+	// vector of all unique epsilon values
+	std::vector<int> epsind;
+	std::vector<double> epsval;
+
 	LDL2 ldl;
+	
+	struct{
+		int n_edges; // 2 or 3
+		int edge[3*2*2];
+		// edge:
+		//        from to
+		//         u v u v
+		// u vec [ 0 0 1 0 ]
+		// v vec [ 0 0 0 1 ]
+		// w vec [ 0 0 1 1 ] w = u+v in this case
+		// w could also be [ 1 0 0 1 ], w = from u to v = v-u
+		
+		double star_mu[3];
+		// star_mu is hodge star for each edge
+	} mesh;
 	
 	mutable struct{
 		complex_t Bloch[2];
 		int p;
 		int max_block_size;
 		int max_nnz_per_row;
+		double shift;
 	} assembly_data;
 	
 	// When structure changes, invalidate A, B, ind
@@ -271,7 +281,6 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 	// When shift changes, symbolic A still good, numeric needs regenerating
 	// If ind is not NULL, we assume we have an A that is symbolically factored, and B is valid
 	bool valid_A_numeric;
-	complex_t last_shift;
 	
 	int InvalidateByStructure();
 	int MakeASymbolic();
@@ -281,11 +290,7 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 	void PrintField(const std::complex<double> *x, const char *filename = NULL) const;
 protected:
 	size_t GetSize() const;
-	void Aop(const std::complex<double> *from, std::complex<double> *to) const;
 	void Bop(const std::complex<double> *from, std::complex<double> *to) const;
-	void Precond(const std::complex<double> &alpha, const std::complex<double> &beta, const std::complex<double> *from, std::complex<double> *to) const;
-	void Randvec(complex_t *to) const;
-	void Orth(complex_t *x) const;
 	void ShiftInv(const complex_t &shift, const complex_t *from, complex_t *to) const;
 	int GetN() const;
 	size_t GetProblemSize() const;
@@ -300,7 +305,7 @@ public:
 	void Op(size_t n, const complex_t &shift, const complex_t *from, complex_t *to) const;
 	void OpForw(size_t n, const complex_t &shift, const complex_t *from, complex_t *to) const;
 	
-	
+	void SetShift(double shift);
 	int GetMaxBlockSize() const;
 	int GetMaxNNZPerRow() const;
 	int BeginBlockSymbolic() const;

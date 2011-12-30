@@ -149,6 +149,12 @@ int SPB_BandSolver_SetNumWanted(SPB_BandSolver *S, int n){
 	S->S->SetNumBands(n);
 	return 0;
 }
+int SPB_BandSolver_SetApproximationTolerance(SPB_BandSolver *S, double tol){
+	if(NULL == S){ return -1; }
+	if(tol < 0.){ return -2; }
+	S->S->SetApproximationTolerance(tol);
+	return 0;
+}
 int SPB_BandSolver_SetTolerance(SPB_BandSolver *S, double tol){
 	if(NULL == S){ return -1; }
 	if(tol < 0.){ return -2; }
@@ -167,14 +173,9 @@ int SPB_BandSolver_SetResolution(SPB_BandSolver *S, int *res){
 	S->S->SetResolution(n);
 	return 0;
 }
-int SPB_BandSolver_SetTargetFrequency(SPB_BandSolver *S, double freq){
-	if(NULL == S){ return -1; }
-	S->S->SetTargetFrequency(freq);
-	return 0;
-}
 int SPB_BandSolver_SetTargetFrequencyRange(SPB_BandSolver *S, double freq0, double freq1){
 	if(NULL == S){ return -1; }
-	S->S->SetTargetFrequency(0.5*(freq0 + freq1));
+	S->S->SetTargetFrequencyRange(freq0, freq1);
 	return -1;
 }
 int SPB_BandSolver_SetVerbosity(SPB_BandSolver *S, int v){

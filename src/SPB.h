@@ -73,9 +73,9 @@ int SPB_BandSolver_OutputEpsilon(const SPB_BandSolver *S,
 	const char *format);
 
 int SPB_BandSolver_SetNumWanted(SPB_BandSolver *S, int n);
+int SPB_BandSolver_SetApproximationTolerance(SPB_BandSolver *S, double tol);
 int SPB_BandSolver_SetTolerance(SPB_BandSolver *S, double tol);
 int SPB_BandSolver_SetResolution(SPB_BandSolver *S, int *res);
-int SPB_BandSolver_SetTargetFrequency(SPB_BandSolver *S, double freq);
 int SPB_BandSolver_SetTargetFrequencyRange(SPB_BandSolver *S, double freq0, double freq1);
 int SPB_BandSolver_SetVerbosity(SPB_BandSolver *S, int v);
 
