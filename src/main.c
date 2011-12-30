@@ -102,7 +102,7 @@ static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 	int i;
 	int numbands = 0;
 	double targ[2];
-	double tol;
+	double approxtol, tol;
 	int res[3];
 	int verb;
 	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
@@ -110,7 +110,8 @@ static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 	luaarg_argspec args[] = {
 		{"Resolution"     , luaarg_type_INT_VEC3  , 1, &res[0]},
 		{"NumBands"       , luaarg_type_INT       , 1, &numbands},
-		{"TargetFrequency", luaarg_type_COMPLEX   , 1, &targ[0]},
+		{"TargetFrequencyRange", luaarg_type_DOUBLE_VEC2, 1, &targ[0]},
+		{"ApproximationTolerance", luaarg_type_DOUBLE, 1, &approxtol},
 		{"Tolerance"      , luaarg_type_DOUBLE    , 1, &tol},
 		{"Verbosity"      , luaarg_type_INT       , 1, &verb},
 		{NULL, 0, 0, NULL}
@@ -133,12 +134,36 @@ static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 	}
 	
 	SPB_BandSolver_SetNumWanted(S, numbands);
+	SPB_BandSolver_SetApproximationTolerance(S, approxtol);
 	SPB_BandSolver_SetTolerance(S, tol);
 	SPB_BandSolver_SetResolution(S, res);
-	SPB_BandSolver_SetTargetFrequency(S, targ[0]);
+	SPB_BandSolver_SetTargetFrequencyRange(S, targ[0] * 2*M_PI, targ[1] * 2*M_PI);
 	SPB_BandSolver_SetVerbosity(S, verb);
 	
 	return 0;
+}
+
+typedef struct{
+	double *v;
+	int n, nalloc;
+} lorentz_pole_adder_data;
+static int lorentz_pole_adder(lua_State *L, int key, int val, void* data){
+	lorentz_pole_adder_data *dat = (lorentz_pole_adder_data*)data;
+	if(dat->n >= dat->nalloc){
+		dat->nalloc += 8;
+		dat->v = realloc(dat->v, sizeof(double)*3*dat->nalloc);
+	}
+	
+	luaarg_argspec args[] = {
+		{"ResonanceFrequency", luaarg_type_COMPLEX, 0, &dat->v[3*dat->n+0]},
+		{"PlasmaFrequency"   , luaarg_type_DOUBLE,  0, &dat->v[3*dat->n+2]},
+		{NULL, 0, 0, NULL}
+	};
+	luaarg_parse(L, val, args);
+	
+	(dat->n)++;
+	
+	return 1;
 }
 
 static int Lua_SPB_BandSolver_AddMaterial(lua_State *L){
@@ -146,9 +171,17 @@ static int Lua_SPB_BandSolver_AddMaterial(lua_State *L){
 	SPB_ConstitutiveTensor eps;
 	double eps_inf[18];
 	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
+	luaarg_list_handler lorentz_pole_handler;
+	lorentz_pole_adder_data data;
+	data.v = NULL;
+	data.n = 0;
+	data.nalloc = 0;
+	lorentz_pole_handler.func = &lorentz_pole_adder;
+	lorentz_pole_handler.data = &data;
 	luaarg_argspec args[] = {
 		{"Name", luaarg_type_STRING, 0, &name},
-		{"EpsilonInf", luaarg_type_COMPLEX_CONSTITUTIVE_TENSOR3X3, 0, &eps_inf[0]},
+		{"EpsilonInfinity", luaarg_type_COMPLEX_CONSTITUTIVE_TENSOR3X3, 0, &eps_inf[0]},
+		{"LorentzPoles", luaarg_type_LIST, 1, &lorentz_pole_handler},
 		{NULL, 0, 0, NULL}
 	};
 	luaarg_parse(L, 2, args);
@@ -156,6 +189,18 @@ static int Lua_SPB_BandSolver_AddMaterial(lua_State *L){
 	eps.value = &eps_inf[0];
 	eps.type = SPB_ConstitutiveTensor_TENSOR;
 	SPB_BandSolver_AddMaterial(S, name, &eps);
+	
+	if(data.n > 0){
+		int i;
+		for(i = 0; i < data.n; ++i){
+			SPB_LorentzPole pole;
+			pole.omega_0 = data.v[3*i+0] * 2*M_PI;
+			pole.Gamma = 2.*data.v[3*i+1];
+			pole.omega_p = data.v[3*i+2] * 2*M_PI;
+			SPB_BandSolver_Material_AddLorentzPole(S, name, &pole);
+		}
+		free(data.v);
+	}
 	
 	free(name);
 	return 0;
@@ -263,19 +308,19 @@ static int Lua_SPB_BandSolver_GetFrequencies(lua_State *L){
 		lua_createtable(L, 2, 0);
 #ifdef SPB_USING_C99_COMPLEX
 		lua_pushinteger(L, 1);
-		lua_pushnumber(L, creal(z[i]));
+		lua_pushnumber(L, creal(z[i]) / (2*M_PI));
 		lua_settable(L, -3);
 		
 		lua_pushinteger(L, 2);
-		lua_pushnumber(L, cimag(z[i]));
+		lua_pushnumber(L, cimag(z[i]) / (2*M_PI));
 		lua_settable(L, -3);
 #else
 		lua_pushinteger(L, 1);
-		lua_pushnumber(L, z[2*i+0]);
+		lua_pushnumber(L, z[2*i+0] / (2*M_PI));
 		lua_settable(L, -3);
 		
 		lua_pushinteger(L, 2);
-		lua_pushnumber(L, z[2*i+1]);
+		lua_pushnumber(L, z[2*i+1] / (2*M_PI));
 		lua_settable(L, -3);
 #endif
 		
