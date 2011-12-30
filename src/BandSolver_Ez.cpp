@@ -373,7 +373,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		if(NULL != value){ *value = (VAL); value++; } \
 	}while(0)
 
-	double eps_z = epsval[epsind[q]];
+	double eps_z = epsval[epsind[q]]*mesh.star_eps;
 	const double Lrl[2] = {
 		hypot(L.Lr[0], L.Lr[1]),
 		hypot(L.Lr[2], L.Lr[3])
@@ -389,9 +389,9 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 	{
 		// diagonal
 		SETCOL(i, j, HY_OFF);
-		SETVAL(-assembly_data.shift);
+		SETVAL(-assembly_data.shift*mesh.star_mu[1]);
 		// Ez coupling
-		coeff = complex_t(0,idr[0]);
+		coeff = complex_t(0,1);
 		if(i+1 == res[0]){
 			SETCOL(0, j, EZ_OFF);
 			SETVAL(coeff*assembly_data.Bloch[0]);
@@ -402,7 +402,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		SETCOL(i, j, EZ_OFF);
 		SETVAL(-coeff);
 		// divH coupling
-		coeff = complex_t(0,idr[1]);
+		coeff = complex_t(0,1);
 		if(0 == j){
 			SETCOL(i, res[1]-1, DIVH_OFF);
 			SETVAL(-coeff/assembly_data.Bloch[1]);
@@ -421,7 +421,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		SETCOL(i, j, EZ_OFF);
 		SETVAL(-assembly_data.shift*eps_z);
 		// Hy coupling
-		coeff = complex_t(0,idr[0]);
+		coeff = complex_t(0,1);
 		if(0 == i){
 			SETCOL(res[0]-1, j, HY_OFF);
 			SETVAL(-coeff/assembly_data.Bloch[0]);
@@ -432,7 +432,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		SETCOL(i, j, HY_OFF);
 		SETVAL(coeff);
 		// Hx coupling
-		coeff = complex_t(0,idr[1]);
+		coeff = complex_t(0,1);
 		if(0 == j){
 			SETCOL(i, res[1]-1, HX_OFF);
 			SETVAL(coeff/assembly_data.Bloch[1]);
@@ -449,9 +449,9 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 	{
 		// diagonal
 		SETCOL(i, j, HX_OFF);
-		SETVAL(-assembly_data.shift);
+		SETVAL(-assembly_data.shift*mesh.star_mu[0]);
 		// Ez coupling
-		coeff = complex_t(0,idr[1]);
+		coeff = complex_t(0,1);
 		if(j+1 == res[1]){
 			SETCOL(i, 0, EZ_OFF);
 			SETVAL(-coeff*assembly_data.Bloch[1]);
@@ -462,7 +462,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		SETCOL(i, j, EZ_OFF);
 		SETVAL(coeff);
 		// divH coupling
-		coeff = complex_t(0,idr[0]);
+		coeff = complex_t(0,1);
 		if(0 == i){
 			SETCOL(res[0]-1, j, DIVH_OFF);
 			SETVAL(-coeff/assembly_data.Bloch[0]);
@@ -481,7 +481,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		SETCOL(i, j, DIVH_OFF);
 		SETVAL(0.);
 		// Hy coupling
-		coeff = complex_t(0,idr[1]);
+		coeff = complex_t(0,1);
 		if(j+1 == res[0]){
 			SETCOL(i, 0, HY_OFF);
 			SETVAL(coeff*assembly_data.Bloch[1]);
@@ -492,7 +492,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		SETCOL(i, j, HY_OFF);
 		SETVAL(-coeff);
 		// Hx coupling
-		coeff = complex_t(0,idr[0]);
+		coeff = complex_t(0,1);
 		if(i+1 == res[0]){
 			SETCOL(0, j, HX_OFF);
 			SETVAL(coeff*assembly_data.Bloch[0]);
@@ -644,6 +644,8 @@ int SPB::BandSolver_Ez::MakeMesh(){
 		mesh.star_mu[2] = 2*uxv*wlen / hypot(wlen*wlen*uvw[0] - uvw2* w[0], wlen*wlen*uvw[1] - uvw2* w[1]);
 	}
 	
+	mesh.star_eps /= (double)(res[0]*res[1]);
+	
 	{
 		double use_k[2] = { last_k[0], last_k[1] };
 		assembly_data.Bloch[0] = complex_t(cos(use_k[0]*2*M_PI), sin(use_k[0]*2*M_PI));
@@ -732,10 +734,10 @@ void SPB::BandSolver_Ez::Bop(const std::complex<double> *x, std::complex<double>
 		for(int j = 0; j < res[1]; ++j){
 			const int q = IDX(i,j);
 			const int row0 = cell2ind[q];
-			double eps_z = epsval[epsind[q]];
-			y[row0+HY_OFF] = x[row0+HY_OFF];
+			double eps_z = epsval[epsind[q]]*mesh.star_eps;
+			y[row0+HY_OFF] = x[row0+HY_OFF]*mesh.star_mu[1];
 			y[row0+EZ_OFF] = eps_z*x[row0+EZ_OFF];
-			y[row0+HX_OFF] = x[row0+HX_OFF];
+			y[row0+HX_OFF] = x[row0+HX_OFF]*mesh.star_mu[0];
 			y[row0+DIVH_OFF] = 0;
 			for(int k = 0; k < 2*npoles[q]; ++k){
 				y[row0+NUM_EH+k] = eps_z*x[row0+NUM_EH+k];
