@@ -111,12 +111,14 @@ int LibUMesh2_Create(const double u[2], const double v[2], Umesh2 *mesh);
 //  set of ordered vertex positions.
 //   There can be up to 6 vertices involved.
 // Arguments:
-//  p - OUT - Returns vertices of Vornoi polygon, in positive orientation
-//            order (right hand rule).
+//  p - OUT - Returns half the vertices of Vornoi polygon, in positive
+//            orientation order (right hand rule). Only half are
+//            computed since the other half are simply the negations
+//            of the returned vertices.
 // Returns value:
-//  Number of vertices.
+//  Number of vertices returned (2 or 3).
 //  Or, -n if the n-th argument is invalid.
-int LubUMesh2_Neighborhood0(const UMesh2 *mesh, double p[12]);
+int LubUMesh2_Neighborhood0(const UMesh2 *mesh, double p[6]);
 
 // Purpose: Computes the Voronoi neighborhood of an edge.
 // Description:
@@ -128,7 +130,7 @@ int LubUMesh2_Neighborhood0(const UMesh2 *mesh, double p[12]);
 //               Can be 0 to n_edges-1.
 //  p    - OUT - Returns the two adjacent circumcenters, ordered so
 //               that the vector from the first to the second is in
-//               the direction of a 90 degree CCW rotation of the
+//               the direction of a 90 degree CW rotation of the
 //               edge vector (positive orientation)
 // Return value:
 //  0 on success.
