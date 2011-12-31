@@ -1,8 +1,9 @@
 #include "libumesh.h"
 #include <float.h>
 #include <math.h>
+#include <stdlib.h>
 
-int LibUMesh2_Create(const double u[2], const double v[2], Umesh2 *mesh){
+int LibUMesh2_Create(const double u[2], const double v[2], UMesh2 *mesh){
 	if(NULL == u){ return -1; }
 	if(NULL == v){ return -2; }
 	if(NULL == mesh){ return -3; }
@@ -24,7 +25,7 @@ int LibUMesh2_Create(const double u[2], const double v[2], Umesh2 *mesh){
 	mesh->Lr[1] = u[1];
 	mesh->Lr[2] = v[0];
 	mesh->Lr[3] = v[1];
-	const double *Lr = mesh->Lr;
+	double *Lr = mesh->Lr;
 	
 	// u edge
 	mesh->inc01[4*0+2*0+0] = 0; // from u
@@ -49,13 +50,13 @@ int LibUMesh2_Create(const double u[2], const double v[2], Umesh2 *mesh){
 		mesh->inc12[5*0+4] =  1; // v1
 		
 		mesh->star0 = uxv;
-		mesh->star1[0] = len[1]/ulen[0];
+		mesh->star1[0] = len[1]/len[0];
 		mesh->star1[1] = len[0]/len[1];
 		mesh->star2[0] = 1./uxv;
 	}else{
 		mesh->type = 0;
-		mesh.n_edges = 3;
-		mesh.n_faces = 2;
+		mesh->n_edges = 3;
+		mesh->n_faces = 2;
 		
 		mesh->star0 = 0.5*uxv;
 		mesh->star2[0] = 2./uxv;
@@ -68,26 +69,26 @@ int LibUMesh2_Create(const double u[2], const double v[2], Umesh2 *mesh){
 		//  Generally, this is
 		//   dual_*len = (|*|^2(u+v+w) - (v^2+u^2+w^2)*) / (2 |uxv|)
 		if(uv < 0){ // wide angle between u and v
-			mesh.type = 1;
-			Lr[2] = Lr[0] + Lr[2];
-			Lr[3] = Lr[1] + Lr[3];
+			mesh->type = 1;
+			Lr[4] = Lr[0] + Lr[2];
+			Lr[5] = Lr[1] + Lr[3];
 			
-			mesh.inc01[4*2+2*0+0] = 0;
-			mesh.inc01[4*2+2*0+1] = 0;
-			mesh.inc01[4*2+2*1+0] = 1;
-			mesh.inc01[4*2+2*1+1] = 1;
+			mesh->inc01[4*2+2*0+0] = 0;
+			mesh->inc01[4*2+2*0+1] = 0;
+			mesh->inc01[4*2+2*1+0] = 1;
+			mesh->inc01[4*2+2*1+1] = 1;
 		}else{
-			mesh.type = 2;
-			Lr[2] = Lr[2] - Lr[0];
-			Lr[3] = Lr[3] - Lr[1];
+			mesh->type = 2;
+			Lr[4] = Lr[2] - Lr[0];
+			Lr[5] = Lr[3] - Lr[1];
 			
-			mesh.edge[4*2+2*0+0] = 1;
-			mesh.edge[4*2+2*0+1] = 0;
-			mesh.edge[4*2+2*1+0] = 0;
-			mesh.edge[4*2+2*1+1] = 1;
+			mesh->inc01[4*2+2*0+0] = 1;
+			mesh->inc01[4*2+2*0+1] = 0;
+			mesh->inc01[4*2+2*1+0] = 0;
+			mesh->inc01[4*2+2*1+1] = 1;
 		}
 		len[2] = hypot(Lr[4], Lr[5]);
-		const double nlen2 = {
+		const double nlen2[3] = {
 			len[0]*len[0] / (2. * uxv),
 			len[1]*len[1] / (2. * uxv),
 			len[2]*len[2] / (2. * uxv)
@@ -112,8 +113,8 @@ static void circumcenter2(const double a[2], const double b[2], double c[2]){
 	const double axb2 = 2.*fabs(a[0]*b[1] - a[1]*b[0]);
 	const double a2 = a[0]*a[0] + a[1]*a[1];
 	const double b2 = b[0]*b[0] + b[1]*b[1];
-	c[0] = (a2*b[0] - b2*a[0]) / axb2;
-	c[1] = (a2*b[1] - b2*a[1]) / axb2;
+	c[1] =-(a2*b[0] - b2*a[0]) / axb2;
+	c[0] = (a2*b[1] - b2*a[1]) / axb2;
 }
 
 int LubUMesh2_Neighborhood0(const UMesh2 *mesh, double p[12]){
@@ -121,6 +122,8 @@ int LubUMesh2_Neighborhood0(const UMesh2 *mesh, double p[12]){
 	if(NULL == p){ return -2; }
 	
 	const double *Lr = mesh->Lr;
+	const double *u = &Lr[0];
+	const double *v = &Lr[2];
 	double q[2];
 	switch(mesh->type){
 	case 0:
@@ -158,6 +161,8 @@ int LibUMesh2_Neighborhood1(const UMesh2 *mesh, int which, double p[4]){
 	if(NULL == p){ return -3; }
 	
 	const double *Lr = mesh->Lr;
+	const double *u = &Lr[0];
+	const double *v = &Lr[2];
 	double q[2];
 	if(0 == mesh->type){
 		if(0 == which){

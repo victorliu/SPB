@@ -100,7 +100,7 @@ typedef struct UMesh2_struct{
 // Purpose: Fills in the mesh information corresponding to the
 //          implicitly defined mesh of a lattice defined by
 //          lattice vectors u,v.
-int LibUMesh2_Create(const double u[2], const double v[2], Umesh2 *mesh);
+int LibUMesh2_Create(const double u[2], const double v[2], UMesh2 *mesh);
 
 // Purpose: Computes the Voronoi neighborhood of an vertex.
 // Description:
@@ -211,7 +211,7 @@ typedef struct UMesh3_struct{
 	// Diagonal hodge stars for vertices, edges, faces, and tets.
 	// Each corresponds to the row of the incidence info.
 	double star0, star1[7], star2[12], star3[6];
-} Umesh3;
+} UMesh3;
 
 
 // Purpose: Fills in the mesh information corresponding to the
@@ -221,7 +221,7 @@ int LibUMesh3_Create(
 	const double a[3],
 	const double b[3],
 	const double c[3],
-	Umesh3 *mesh
+	UMesh3 *mesh
 );
 
 // Purpose: Computes the Voronoi neighborhood of a vertex
