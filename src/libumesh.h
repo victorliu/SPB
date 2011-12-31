@@ -174,12 +174,19 @@ typedef struct UMesh3_struct{
 	//signed char inc01[7*(3*3)];
 	// We pack the above into bits:
 	unsigned char inc01[7];
-#define LibUMesh3_inc01_from_a(UC) ((int)((UC)&0x20))
-#define LibUMesh3_inc01_from_b(UC) ((int)((UC)&0x10))
-#define LibUMesh3_inc01_from_c(UC) ((int)((UC)&0x08))
-#define LibUMesh3_inc01_to_a(UC) ((int)((UC)&0x04))
-#define LibUMesh3_inc01_to_b(UC) ((int)((UC)&0x02))
-#define LibUMesh3_inc01_to_c(UC) ((int)((UC)&0x01))
+#define LibUMesh3_inc01_from_a_MASK(UC) 0x20
+#define LibUMesh3_inc01_from_b_MASK(UC) 0x10
+#define LibUMesh3_inc01_from_c_MASK(UC) 0x08
+#define LibUMesh3_inc01_to_a_MASK(UC)   0x04
+#define LibUMesh3_inc01_to_b_MASK(UC)   0x02
+#define LibUMesh3_inc01_to_c_MASK(UC)   0x01
+
+#define LibUMesh3_inc01_from_a(UC) ((int)((UC)&LibUMesh3_inc01_from_a_MASK))
+#define LibUMesh3_inc01_from_b(UC) ((int)((UC)&LibUMesh3_inc01_from_b_MASK))
+#define LibUMesh3_inc01_from_c(UC) ((int)((UC)&LibUMesh3_inc01_from_c_MASK))
+#define LibUMesh3_inc01_to_a(UC)   ((int)((UC)&LibUMesh3_inc01_to_a_MASK))
+#define LibUMesh3_inc01_to_b(UC)   ((int)((UC)&LibUMesh3_inc01_to_b_MASK))
+#define LibUMesh3_inc01_to_c(UC)   ((int)((UC)&LibUMesh3_inc01_to_c_MASK))
 	
 	// inc12 gives incidence information about faces and edges
 	//    4 x {which, a-off, b-off, c-off}
@@ -187,14 +194,18 @@ typedef struct UMesh3_struct{
 	// which = 1-based index of which of a,b,c,d,e,f,g (0 for none, negative for negative orientation)
 	// a,b,c-off = (0-1) integer multiples of a,b,c to add to the vector
 	//signed char inc12[12*4*4];
-	// We pack the above into bits: top 4 bits for which+7, bottom 3 for a,b,c-off:
+	// We pack the above into bits: top 5 bits for which+7, bottom 3 for a,b,c-off:
 	// lowest order 8 bits for first edge, etc.
 	unsigned int inc12[12];
 #define LibUMesh3_inc12_getedge(UI,EI) ((UI)>>((EI)<<3))
-#define LibUMesh3_inc12_which(UC) (((int)(((UC)>>4)&0xf))-7)
-#define LibUMesh3_inc12_aoff(UC) ((int)((UC)&0x4))
-#define LibUMesh3_inc12_boff(UC) ((int)((UC)&0x2))
-#define LibUMesh3_inc12_coff(UC) ((int)((UC)&0x1))
+#define LibUMesh3_inc12_which_MASK(UC) 0x1f
+#define LibUMesh3_inc12_aoff_MASK(UC)  0x4
+#define LibUMesh3_inc12_boff_MASK(UC)  0x2
+#define LibUMesh3_inc12_coff_MASK(UC)  0x1
+#define LibUMesh3_inc12_which(UC) (((int)(((UC)>>3)&LibUMesh3_inc12_which_MASK))-7)
+#define LibUMesh3_inc12_aoff(UC) ((int)((UC)&LibUMesh3_inc12_aoff_MASK))
+#define LibUMesh3_inc12_boff(UC) ((int)((UC)&LibUMesh3_inc12_boff_MASK))
+#define LibUMesh3_inc12_coff(UC) ((int)((UC)&LibUMesh3_inc12_coff_MASK))
 	
 	// inc23 gives incidence information about faces and tets/prisms/cubes
 	//    6 x {which, a-off, b-off, c-off}
@@ -203,10 +214,14 @@ typedef struct UMesh3_struct{
 	//int inc23[6*6*4];
 	// We pack the above into bits: top 5 bits for which+12, bottom 3 for a,b,c-off:
 	unsigned char inc23[6*6];
-#define LibUMesh3_inc23_which(UC) (((int)(((UC)>>5)&0x1f))-12)
-#define LibUMesh3_inc23_aoff(UC) ((int)((UC)&0x4))
-#define LibUMesh3_inc23_boff(UC) ((int)((UC)&0x2))
-#define LibUMesh3_inc23_coff(UC) ((int)((UC)&0x1))
+#define LibUMesh3_inc23_which(UC) (((int)(((UC)>>3)&LibUMesh3_inc23_which_MASK))-12)
+#define LibUMesh3_inc23_which_MASK(UC) 0x1f
+#define LibUMesh3_inc23_aoff_MASK(UC)  0x4
+#define LibUMesh3_inc23_boff_MASK(UC)  0x2
+#define LibUMesh3_inc23_coff_MASK(UC)  0x1
+#define LibUMesh3_inc23_aoff(UC) ((int)((UC)&LibUMesh3_inc23_aoff_MASK))
+#define LibUMesh3_inc23_boff(UC) ((int)((UC)&LibUMesh3_inc23_boff_MASK))
+#define LibUMesh3_inc23_coff(UC) ((int)((UC)&LibUMesh3_inc23_coff_MASK))
 	
 	// Diagonal hodge stars for vertices, edges, faces, and tets.
 	// Each corresponds to the row of the incidence info.
