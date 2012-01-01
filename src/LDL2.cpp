@@ -312,7 +312,7 @@ int LDL2::Inertia(int *pos, int *neg) const{
 		double ch = 0.5 * D[4*j+3].real();
 		double ac = ah+ch;
 		double bmag = std::abs(D[4*j+1]);
-		double root = hypot(ah-ac, bmag);
+		double root = hypot(ah-ch, bmag);
 		if(ac + root > 0){
 			(*pos)++;
 		}else if(ac + root < 0){
