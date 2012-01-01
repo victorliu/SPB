@@ -14,6 +14,7 @@ SPB: $(SUBDIRS) \
 	z-SPBGlue.o \
 	z-util.o \
 	z-types.o \
+	z-libumesh.o \
 	z-IntervalEigensolver.o \
 	z-BandSolver.o \
 	z-BandSolver_Ez.o
@@ -25,6 +26,8 @@ z-luaarg.o: luaarg.c luaarg.h
 	$(CC) $(CFLAGS) -c $(LUA_INC) luaarg.c -o z-luaarg.o
 z-NestedDissection.o: NestedDissection.c NestedDissection.h
 	$(CC) $(CFLAGS) -c NestedDissection.c -o z-NestedDissection.o
+z-libumesh.o: libumesh.c libumesh.h
+	$(CC) $(CFLAGS) -c libumesh.c -o z-libumesh.o
 z-LDL2.o: LDL2.cpp LDL2.h
 	$(CXX) $(CFLAGS) -c LDL2.cpp -o z-LDL2.o
 z-SPBGlue.o: SPBGlue.cpp SPB.h SPB.hpp

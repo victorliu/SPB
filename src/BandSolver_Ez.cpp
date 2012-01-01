@@ -100,131 +100,12 @@ extern "C"{
 
 typedef std::complex<double> complex_t;
 
-#define NDIM 2
-#define NUM_EH   4
-#define NUM_E    1
-#define DIVE_OFF (undefined)
-#define EX_OFF   (undefined)
-#define HZ_OFF   (undefined)
-#define EY_OFF   (undefined)
-#define HY_OFF   0
+#define HV_OFF   0
 #define EZ_OFF   1
-#define HX_OFF   2
+#define HU_OFF   2
 #define DIVH_OFF 3
-
-/*
-#define NLATVECS 3
-// NLATVECS gives number of rows of the following table, which always has 3 columns
-// Edir below references the row of this table.
-static const int lattice_tab[] = {
-	1,0,0,
-	0,1,0,
-	0,0,1
-}
-static const int field_tab[] = {
-	// field, Bval, Nterms, Edir
-	// -------------------------
-	// field = which field is on the LHS
-	// Bval = 0 means B is 0
-	//        1 means B is 1
-	//        2 means B is epsilon
-	// Nterms is number of finite differences to other EH fields (number of coupling to other EH fields divided by 2)
-	// Edir = -1 if not an E-field
-	//      = 0-n for lattice vector direction (possibly more than 3 for skew lattices)
-	
-	// Hy
-	HY_OFF  , 1, 2, -1, // Nterms = 2 for Ez, and 2 for divH
-	// Ez
-	EZ_OFF  , 2, 2,  2, // Nterms = 2 each for Hx,Hy
-	// Hx
-	HX_OFF  , 1, 2, -1, // Nterms = 2 for Ez, and 2 for divH
-	// divH
-	DIVH_OFF, 0, 2, -1
-};
-static const int diff_tab[] = {
-	// diff dim, fb, sign, field
-	// diff dim = direction in which to take finite difference (x=0 or y=1)
-	// fb = forward=0 or backward=1 difference
-	// sign = sign of the difference
-	// field = field to difference (use one of the _OFF values)
-	
-	// Hy
-	0, 0, 0, EZ_OFF,   // idr[0] * (Ez[i+1,j,k] - Ez[i,j,k])
-	1, 1, 0, DIVH_OFF, // idr[1] * (divH[i,j,k] - divH[i,j-1,k])
-	// Ez
-	1, 1, 1, HX_OFF, // -idr[1] * (Hx[i,j,k] - Hx[i,j-1,k])
-	0, 1, 0, HY_OFF, //  idr[0] * (Hy[i,j,k] - Hy[i-1,j,k])
-	// Hx
-	1, 0, 1, EZ_OFF,  // -idr[1] * (Ez[i,j+1,k] - Ez[i,j,k])
-	0, 1, 0, DIVH_OFF //  idr[0] * (divH[i,j,k] - divH[i-1,j,k])
-	// divH
-	0, 0, 0, HX_OFF, // idr[0] * (Hx[i+1,j,k] - Hx[i,j,k])
-	1 ,0, 0, HY_OFF  // idr[1] * (Hy[i,j+1,k] - Hy[i,j,k])
-};
-
-void table_driven(){
-	for(ii[0] = 0; ii[0] < res[0]; ++ii[0]){
-		for(ii[1] = 0; ii[1] < res[1]; ++ii[1]){
-			const int q = IDX(ii);
-			const int row0 = cell2ind[q];
-			int row = 0, col;
-			
-			// Get Epsilon tensor for E-H field coupling
-			complex_t epsE[9];
-			// Get Epsilon tensor for E-V field coupling
-			complex_t epsV[9];
-			
-			int diff_tab_offset = 0;
-			for(int field = 0; field < NUM_EH; ++field){
-				row = row0 + field_tab[4*field+0];
-				switch(field_tab[4*field+1]){
-				case 0: BSET(col,col, 0); break;
-				case 1: BSET(col,col, 1); break;
-				default:
-					// set block of B for E-field directions
-					break;
-				}
-				
-				// set the diagonal contribution
-				//ASET(col,col, -assembly_data.shift * Bvals);
-				
-				static const double sign[2] = {1., -1.};
-				
-				for(int diff = 0; diff < field_tab[4*field+2]; ++diff, ++diff_tab_offset){
-					const int *curdiff = &diff_tab[4*diff_tab_offset];
-					const int dim = curdiff[0];
-					const complex_t coeff = complex_t(0,sign[curdiff[2]] * idr[dim]);
-					if(curdiff[1]){ // backward diff
-						int jj[NDIM]; for(int _i=0;_i<NDIM;++_i){jj[_i]=ii[_i];}
-						if(0 == ii[dim]){
-							col = row0 + curdiff[3];
-							ASET(row,col, coeff);
-							jj[dim] = res[dim]-1;
-							col = cell2ind[IDX(jj)] + curdiff[3];
-							ASET(row,col, -coeff/Bloch[dim]);
-						}else{
-							jj[dim]--;
-							row = cell2ind[IDX(jj)] + curdiff[3];
-							ASET(row,col, -coeff);
-							col = row0 + curdiff[3];
-							ASET(row,col, coeff);
-						}
-					}else{
-						if(ii[dim] + 1 == res[dim]){
-						}else{
-						}
-					}
-				}
-				
-				if(constraint_off){
-					// add constraints
-				}
-			}
-			
-			// For each E-field, add corresponding P and V fields
-		}
-	}
-}*/
+#define HW_OFF    4
+#define DIVH2_OFF 5
 
 #define IDX(i,j) (res[1]*(i)+(j))
 #define UNIDX(q,i,j) do{ \
@@ -239,6 +120,7 @@ SPB::BandSolver_Ez::BandSolver_Ez(double Lr[4]):BandSolver(Lattice2(Lr)),L(Lr),
 	ind2cell = NULL;
 	matind = NULL;
 	npoles = NULL;
+	
 	assembly_data.shift = 2*M_PI*0.2;
 }
 
@@ -262,10 +144,10 @@ void SPB::BandSolver_Ez::PrintField(const std::complex<double> *y, const char *f
 			int q = cell2ind[IDX(i,j)];
 			(*out)
 				<< i << "\t" << j
-				 << "\t" << y[q+HX_OFF].real()
-				 << "\t" << y[q+HX_OFF].imag()
-				 << "\t" << y[q+HY_OFF].real()
-				 << "\t" << y[q+HY_OFF].imag()
+				 << "\t" << y[q+HU_OFF].real()
+				 << "\t" << y[q+HU_OFF].imag()
+				 << "\t" << y[q+HV_OFF].real()
+				 << "\t" << y[q+HV_OFF].imag()
 				 << "\t" << y[q+EZ_OFF].real()
 				 << "\t" << y[q+EZ_OFF].imag()
 				 << "\t" << y[q+DIVH_OFF].real()
@@ -285,7 +167,8 @@ int SPB::BandSolver_Ez::SolveK(const double *k){
 	ClearSolution();
 	
 	UpdateA(k);
-	IRASolve(N);
+	//IRASolve(N);
+	SolveCold(this);
 	
 	return 0;
 }
@@ -373,14 +256,65 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		if(NULL != value){ *value = (VAL); value++; } \
 	}while(0)
 
-	double eps_z = epsval[epsind[q]]*mesh.star_eps;
+	double eps_z = epsval[epsind[q]]*mesh.star0;
+	
+	static const int divhind[2] = { DIVH_OFF, DIVH2_OFF };
+	/*
+	// HV
+	NEWROW();
+	{
+		// diagonal
+		SETCOL(i, j, HV_OFF); SETVAL(-assembly_data.shift/mesh.star1[HV_OFF]);
+		// Ez coupling
+		{
+			for(int vi = 0; vi < 2; ++vi){
+				complex_t coeff(0,-1);
+				mii[2] = {i,j};
+				for(int d = 0; d < 2; ++d){
+					if(mesh.inc01[4*HV_OFF+2*vi+d]){
+						if(mii[d]+1 == res[d]){
+							mii[d] = 0;
+							coeff *= assembly_data.Bloch[d];
+						}else{
+							mii[d]++;
+						}
+					}
+				}
+				SETCOL(mii[0], mii[1], EZ_OFF); SETVAL(coeff);
+			}
+		}
+		// divH coupling
+		for(int f = 0; f < mesh.n_faces; ++f){ // for each face
+			for(int ei = 0; ei < mesh.n_edges; ++ei){
+				unsigned char einfo = LibUMesh2_inc12_getedge(mesh.inc12[f],ei);
+				int e = LibUMesh2_inc12_which(einfo);
+				double sign = 1.;
+				if(0 == e){ continue; }
+				if(e < 0){ sign = -1.; e = -e; }
+				if(HV_OFF == e){
+					int mi = i, mj = j;
+					complex_t coeff(0,sign);
+					if(LibUMesh2_inc12_voff(einfo)){
+						if(0 == j){
+							mj = res[1]-1;
+							coeff /= assembly_data.Bloch[1]);
+						}else{
+							mj = j-1;
+						}
+					}
+					SETCOL(mi, mj, divhind[k]); SETVAL(coeff);
+				}
+			}
+		}
+	}
+	*/
 	
 	// Hy = idr[0] * (Ez[i+1,j,k] - Ez[i,j,k])
 	//    + idr[1] * (divH[i,j,k] - divH[i,j-1,k])
 	NEWROW();
 	{
 		// diagonal
-		SETCOL(i, j, HY_OFF); SETVAL(-assembly_data.shift*mesh.star_mu[1]);
+		SETCOL(i, j, HV_OFF); SETVAL(-assembly_data.shift/mesh.star1[1]);
 		// Ez coupling
 		if(i+1 == res[0]){
 			SETCOL(0, j, EZ_OFF); SETVAL(Im1*assembly_data.Bloch[0]);
@@ -404,25 +338,27 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		SETCOL(i, j, EZ_OFF); SETVAL(-assembly_data.shift*eps_z);
 		// Hy coupling
 		if(0 == i){
-			SETCOL(res[0]-1, j, HY_OFF); SETVAL(-Im1/assembly_data.Bloch[0]);
+			SETCOL(res[0]-1, j, HV_OFF); SETVAL(-Im1/assembly_data.Bloch[0]);
 		}else{
-			SETCOL(i-1, j, HY_OFF); SETVAL(-Im1);
+			SETCOL(i-1, j, HV_OFF); SETVAL(-Im1);
 		}
-		SETCOL(i, j, HY_OFF); SETVAL(Im1);
+		SETCOL(i, j, HV_OFF); SETVAL(Im1);
 		// Hx coupling
 		if(0 == j){
-			SETCOL(i, res[1]-1, HX_OFF); SETVAL(Im1/assembly_data.Bloch[1]);
+			SETCOL(i, res[1]-1, HU_OFF); SETVAL(Im1/assembly_data.Bloch[1]);
 		}else{
-			SETCOL(i, j-1, HX_OFF); SETVAL(Im1);
+			SETCOL(i, j-1, HU_OFF); SETVAL(Im1);
 		}
-		SETCOL(i, j, HX_OFF); SETVAL(-Im1);
+		SETCOL(i, j, HU_OFF); SETVAL(-Im1);
+		// Ignore V coupling since we only need the part of the equations
+		// to the left of the diagonal.
 	}
 	// Hx += -idr[1] * (Ez[i,j+1,k] - Ez[i,j,k])
 	//    +   idr[0] * (divH[i,j,k] - divH[i-1,j,k])
 	NEWROW();
 	{
 		// diagonal
-		SETCOL(i, j, HX_OFF); SETVAL(-assembly_data.shift*mesh.star_mu[0]);
+		SETCOL(i, j, HU_OFF); SETVAL(-assembly_data.shift/mesh.star1[0]);
 		// Ez coupling
 		if(j+1 == res[1]){
 			SETCOL(i, 0, EZ_OFF); SETVAL(-Im1*assembly_data.Bloch[1]);
@@ -446,18 +382,18 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		SETCOL(i, j, DIVH_OFF); SETVAL(0.);
 		// Hy coupling
 		if(j+1 == res[0]){
-			SETCOL(i, 0, HY_OFF); SETVAL(Im1*assembly_data.Bloch[1]);
+			SETCOL(i, 0, HV_OFF); SETVAL(Im1*assembly_data.Bloch[1]);
 		}else{
-			SETCOL(i, j+1, HY_OFF); SETVAL(Im1);
+			SETCOL(i, j+1, HV_OFF); SETVAL(Im1);
 		}
-		SETCOL(i, j, HY_OFF); SETVAL(-Im1);
+		SETCOL(i, j, HV_OFF); SETVAL(-Im1);
 		// Hx coupling
 		if(i+1 == res[0]){
-			SETCOL(0, j, HX_OFF); SETVAL(Im1*assembly_data.Bloch[0]);
+			SETCOL(0, j, HU_OFF); SETVAL(Im1*assembly_data.Bloch[0]);
 		}else{
-			SETCOL(i+1, j, HX_OFF); SETVAL(Im1);
+			SETCOL(i+1, j, HU_OFF); SETVAL(Im1);
 		}
-		SETCOL(i, j, HX_OFF); SETVAL(-Im1);
+		SETCOL(i, j, HU_OFF); SETVAL(-Im1);
 	}
 	
 	int matbits = matind[q];
@@ -466,7 +402,7 @@ int SPB::BandSolver_Ez::GetNextBlockNumeric(int *rowptr, int *colind, complex_t 
 		if(m > 0){
 			m--;
 			const Material& curmat = material[m];
-			int col = NUM_EH;
+			int col = 1+mesh.n_edges+mesh.n_faces;
 			for(size_t pi = 0; pi < curmat.poles.size(); ++pi){
 				const LorentzPole &pole = material[m].poles[pi];
 				// P = -i w0 eps V
@@ -510,95 +446,8 @@ int SPB::BandSolver_Ez::MakeMesh(){
 		L.Lr[0], L.Lr[1],
 		L.Lr[2], L.Lr[3]
 	};
-
-	// Build mesh
-	//   u edge
-	mesh.edge[4*0+2*0+0] = 0;
-	mesh.edge[4*0+2*0+1] = 0;
-	mesh.edge[4*0+2*1+0] = 1;
-	mesh.edge[4*0+2*1+1] = 0;
-	//   v edge
-	mesh.edge[4*1+2*0+0] = 0;
-	mesh.edge[4*1+2*0+1] = 0;
-	mesh.edge[4*1+2*1+0] = 0;
-	mesh.edge[4*1+2*1+1] = 1;
-	const double uv = Lr[0]*Lr[2] + Lr[1]*Lr[3];
-	const double uxv = Lr[0]*Lr[3] - Lr[1]*Lr[2];
-	const double ulen = hypot(Lr[0], Lr[1]);
-	const double vlen = hypot(Lr[2], Lr[3]);
-	if(fabs(uv) < std::numeric_limits<double>::epsilon()*uxv){
-		mesh.type = 0;
-		mesh.star_mu[0] = ulen/vlen;
-		mesh.star_mu[1] = vlen/ulen;
-		
-		mesh.star_eps = uxv;
-		mesh.face[5*0+0] =  1;
-		mesh.face[5*0+1] = -1;
-		mesh.face[5*0+2] =  0;
-		mesh.face[5*0+3] = -1;
-		mesh.face[5*0+4] =  1;
-	}else{
-		mesh.n_edges = 3;
-		mesh.star_eps = 0.5*uxv;
-		double uvw[2], w[2];
-		if(uv < 0){ // wide angle between u and v
-			mesh.type = 1;
-			// edge w is u+v
-			w[0] = Lr[0] + Lr[2];
-			w[1] = Lr[1] + Lr[3];
-			mesh.edge[4*2+2*0+0] = 0;
-			mesh.edge[4*2+2*0+1] = 0;
-			mesh.edge[4*2+2*1+0] = 1;
-			mesh.edge[4*2+2*1+1] = 1;
-			// star_mu[0] = ulen/dual_ulen
-			// dual_ulen = circum(0,u,u+v) - circum(0,-v,u)
-			// where circum(0,a,b) = ((|a|^2 b - |b|^2 a) x (axb))/(2 |axb|^2)
-			// this simplifies to
-			// dual_ulen = ||u|^2(v+w)-(w^2+v^2)u| / (2|uxv|)
-			// generally, this is
-			// dual_*len = (|*|^2(u+v+w) - (v^2+u^2+w^2)*) / (2 |uxv|)
-			uvw[0] = 2*w[0];
-			uvw[1] = 2*w[1];
-			
-			mesh.face[5*0+0] =  1;
-			mesh.face[5*0+1] =  0;
-			mesh.face[5*0+2] = -1;
-			mesh.face[5*0+3] =  0;
-			mesh.face[5*0+4] =  1;
-			mesh.face[5*1+0] =  0;
-			mesh.face[5*1+1] = -1;
-			mesh.face[5*1+2] =  1;
-			mesh.face[5*1+3] = -1;
-			mesh.face[5*1+4] =  0;
-		}else{
-			mesh.type = 2;
-			// edge w is v-u
-			mesh.edge[4*2+2*0+0] = 1;
-			mesh.edge[4*2+2*0+1] = 0;
-			mesh.edge[4*2+2*1+0] = 0;
-			mesh.edge[4*2+2*1+1] = 1;
-			uvw[0] = 2*Lr[2];
-			uvw[1] = 2*Lr[3];
-			
-			mesh.face[5*0+0] =  1;
-			mesh.face[5*0+1] = -1;
-			mesh.face[5*0+2] =  1;
-			mesh.face[5*0+3] =  0;
-			mesh.face[5*0+4] =  0;
-			mesh.face[5*1+0] =  0;
-			mesh.face[5*1+1] =  0;
-			mesh.face[5*1+2] = -1;
-			mesh.face[5*1+3] = -1;
-			mesh.face[5*1+4] =  1;
-		}
-		const double wlen = hypot(w[0],w[1]);
-		const double uvw2 = ulen*ulen + vlen*vlen + wlen*wlen;
-		mesh.star_mu[0] = 2*uxv*ulen / hypot(ulen*ulen*uvw[0] - uvw2*Lr[0], ulen*ulen*uvw[1] - uvw2*Lr[1]);
-		mesh.star_mu[1] = 2*uxv*vlen / hypot(vlen*vlen*uvw[0] - uvw2*Lr[2], vlen*vlen*uvw[1] - uvw2*Lr[3]);
-		mesh.star_mu[2] = 2*uxv*wlen / hypot(wlen*wlen*uvw[0] - uvw2* w[0], wlen*wlen*uvw[1] - uvw2* w[1]);
-	}
-	
-	mesh.star_eps /= (double)(res[0]*res[1]);
+	LibUMesh2_Create(&L.Lr[0], &L.Lr[2], &mesh);
+	mesh.star0 /= (double)(res[0]*res[1]);
 	
 	{
 		double use_k[2] = { last_k[0], last_k[1] };
@@ -609,6 +458,7 @@ int SPB::BandSolver_Ez::MakeMesh(){
 	// Prepare the indexing
 	epsval.clear();
 	epsind.resize(Ngrid);
+	int max_poles = 0;
 	{
 		std::map<double,int> epsmap;
 		{ // use cell2ind to temporarily hold the forward permutation
@@ -642,6 +492,7 @@ int SPB::BandSolver_Ez::MakeMesh(){
 					eps_z = curmat.eps_inf.value[8].real();
 				}
 				npoles[q] = num_poles;
+				if(num_poles > max_poles){ max_poles = num_poles; }
 				if(tag <= 13){
 					matind[q] = tag+2;
 				}
@@ -666,13 +517,13 @@ int SPB::BandSolver_Ez::MakeMesh(){
 			cell2ind[q] = next_index;
 			
 			// We have Ez, Hx, Hy, divH, plus V,P pairs for each pole
-			next_index += NUM_EH + NUM_E*2*npoles[q];
+			next_index += 1+mesh.n_edges+mesh.n_faces + 2*npoles[q];
 		}
 		N = next_index;
 	}
 	
-	assembly_data.max_nnz_per_row = 16;
-	assembly_data.max_block_size = NUM_EH + 2*4; // arbitrary hack
+	assembly_data.max_nnz_per_row = 5+max_poles;
+	assembly_data.max_block_size = 1+mesh.n_edges+mesh.n_faces + 2*max_poles;
 
 	ldl.Factorize(*this);
 	
@@ -684,17 +535,18 @@ void SPB::BandSolver_Ez::ShiftInv(const complex_t *x, complex_t *y) const{
 	ldl.Solve(y);
 }
 void SPB::BandSolver_Ez::Bop(const std::complex<double> *x, std::complex<double> *y) const{
+	const int VP_off = 1+mesh.n_edges+mesh.n_faces;
 	for(int i = 0; i < res[0]; ++i){
 		for(int j = 0; j < res[1]; ++j){
 			const int q = IDX(i,j);
 			const int row0 = cell2ind[q];
-			double eps_z = epsval[epsind[q]]*mesh.star_eps;
-			y[row0+HY_OFF] = x[row0+HY_OFF]*mesh.star_mu[1];
+			double eps_z = epsval[epsind[q]]*mesh.star0;
+			y[row0+HV_OFF] = x[row0+HV_OFF]/mesh.star1[1];
 			y[row0+EZ_OFF] = eps_z*x[row0+EZ_OFF];
-			y[row0+HX_OFF] = x[row0+HX_OFF]*mesh.star_mu[0];
+			y[row0+HU_OFF] = x[row0+HU_OFF]/mesh.star1[0];
 			y[row0+DIVH_OFF] = 0;
 			for(int k = 0; k < 2*npoles[q]; ++k){
-				y[row0+NUM_EH+k] = eps_z*x[row0+NUM_EH+k];
+				y[row0+VP_off+k] = eps_z*x[row0+VP_off+k];
 			}
 		}
 	}
@@ -721,6 +573,11 @@ int SPB::BandSolver_Ez::UpdateA(const double k[2]){
 }
 void SPB::BandSolver_Ez::SetShift(double shift){
 	assembly_data.shift = shift;
+}
+void SPB::BandSolver_Ez::Inertia(int *nlower, int *nupper){
+	ldl.Factorize(*this);
+	// swapped due to inverse
+	ldl.Inertia(nupper, nlower);
 }
 
 size_t SPB::BandSolver_Ez::GetProblemSize() const{

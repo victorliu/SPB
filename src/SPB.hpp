@@ -1,14 +1,16 @@
-ifndef _SPB_HPP_INCLUDED_
+#ifndef _SPB_HPP_INCLUDED_
 #define _SPB_HPP_INCLUDED_
 
 #include <string>
 #include <vector>
+#include <list>
 #include <map>
 #include <complex>
 #include <Sparse.h>
 #include "SPB.h"
 extern "C" {
 #include "ShapeSet.h"
+#include "libumesh.h"
 }
 #include "HermitianMatrixProvider.h"
 #include "IntervalEigensolver.h"
@@ -151,9 +153,61 @@ class EigenOperator{
 public:
 	virtual size_t GetSize() const = 0;
 	virtual void SetShift(double shift) = 0;
+	virtual void Inertia(int *nlower, int *nupper) = 0;
 	
 	virtual void Bop(const complex_t *from, complex_t *to) const = 0;
 	virtual void ShiftInv(const complex_t *from, complex_t *to) const = 0;
+};
+
+class IntervalEigensolver{
+public:
+	struct IntervalCount{
+		double a, b;
+		int n;
+	};
+	typedef HermitianMatrixProvider::complex_t complex_t;
+
+	// set the lower and upper bound of eigenvalues that are sought
+	// max_values is the maximum number of eigenvalues to find (set to zero for unlimited)
+	// exclude_zero is whether to exclude zero eigenvalues if the range straddles the origin.
+	IntervalEigensolver();
+	IntervalEigensolver(double lower, double upper, int max_values = 0, bool exclude_zero = true);
+	~IntervalEigensolver();
+	
+	class SolutionHandler{
+	public:
+		virtual int OnFoundSolution(double value, complex_t *vec) = 0;
+	};
+	int SetSolutionFunction(SolutionHandler *func);
+	class ProgressFunction{
+	public:
+		virtual int OnProgressUpdate(int nvecs, int nint, double *intbegin, int *intcnt) = 0;
+	};
+	int SetProgressFunction(ProgressFunction *func);
+	
+	void SetInterval(double lower, double upper);
+	
+	int SolveCold(EigenOperator *A);
+	int SolveWarm(EigenOperator *A, double max_change = 0);
+private:
+	double range[2];
+	int maxvals;
+	bool exzero;
+	std::list<IntervalCount> ivals;
+	
+	double tol;
+	
+	// compute this many eigenvectors at a time
+	int block_size;
+	
+	// maximum number of subintervals of the range to use
+	int max_intervals;
+	
+	SolutionHandler *solfunc;
+	ProgressFunction *progfunc;
+	
+	void AddInterval(double lower, double upper, int count);
+	void SearchInterval(EigenOperator *A, double a, double b, int na, int nb);
 };
 
 class BandSolver : public EigenOperator, public IntervalEigensolver{
@@ -248,46 +302,7 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 
 	LDL2 ldl;
 	
-	struct{
-		int n_edges; // 2 or 3
-		int edge[3*2*2];
-		// edge:
-		//        from to
-		//         u v u v
-		// u vec [ 0 0 1 0 ]
-		// v vec [ 0 0 0 1 ]
-		// w vec [ 0 0 1 1 ] w = u+v in this case
-		// w could also be [ 1 0 0 1 ], w = from u to v = v-u
-		
-		double star_mu[3];
-		// star_mu is hodge star for each edge
-		double star_eps; // same as primal cell area
-		int face[5*2];
-		// face:
-		// for a square lattice:
-		//        sign
-		//   u0 [  1 ]
-		//   v0 [ -1 ]
-		//   w0 [  0 ]
-		//   u1 [ -1 ]
-		//   v1 [  1 ]
-		//   second set of 5 are all zero
-		// for a u.v < 0 lattice:
-		//        sign
-		//   u0 [  1 ]
-		//   v0 [  0 ]
-		//   w0 [ -1 ]
-		//   u1 [  0 ]
-		//   v1 [  1 ]
-		//
-		//   u0 [  0 ]
-		//   v0 [ -1 ]
-		//   w0 [  1 ]
-		//   u1 [ -1 ]
-		//   v1 [  0 ]
-		
-		int type; // 0 for u.v == 0, 1 for u.v < 0, 2 otherwise
-	} mesh;
+	UMesh2 mesh;
 	
 	mutable struct{
 		complex_t Bloch[2];
@@ -323,6 +338,7 @@ public:
 	int SolveK(const double *k);
 		
 	void SetShift(double shift);
+	void Inertia(int *nlower, int *nupper);
 	int GetMaxBlockSize() const;
 	int GetMaxNNZPerRow() const;
 	int BeginBlockSymbolic() const;
