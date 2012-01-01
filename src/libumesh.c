@@ -43,11 +43,12 @@ int LibUMesh2_Create(const double u[2], const double v[2], UMesh2 *mesh){
 		mesh->n_edges = 2;
 		mesh->n_faces = 1;
 		
-		mesh->inc12[5*0+0] =  1; // u0
-		mesh->inc12[5*0+1] = -1; // v0
-		mesh->inc12[5*0+2] =  0; // w
-		mesh->inc12[5*0+3] = -1; // u1
-		mesh->inc12[5*0+4] =  1; // v1
+		mesh->inc12[0] = 0;
+		mesh->inc12[0] |= (( 1+3)<<2 | 0x0) << 0;
+		mesh->inc12[0] |= (( 2+3)<<2 | 0x2) << 8;
+		mesh->inc12[0] |= ((-1+3)<<2 | 0x1) << 16;
+		mesh->inc12[0] |= ((-2+3)<<2 | 0x0) << 24;
+		mesh->inc12[1] = 0;
 		
 		mesh->star0 = uxv;
 		mesh->star1[0] = len[1]/len[0];
@@ -77,6 +78,15 @@ int LibUMesh2_Create(const double u[2], const double v[2], UMesh2 *mesh){
 			mesh->inc01[4*2+2*0+1] = 0;
 			mesh->inc01[4*2+2*1+0] = 1;
 			mesh->inc01[4*2+2*1+1] = 1;
+			
+			mesh->inc12[0] = 0;
+			mesh->inc12[0] |= (( 1+3)<<2 | 0x0) << 0;
+			mesh->inc12[0] |= (( 2+3)<<2 | 0x2) << 8;
+			mesh->inc12[0] |= ((-3+3)<<2 | 0x0) << 16;
+			mesh->inc12[1] = 0;
+			mesh->inc12[1] |= (( 3+3)<<2 | 0x0) << 0;
+			mesh->inc12[1] |= ((-1+3)<<2 | 0x1) << 8;
+			mesh->inc12[1] |= ((-2+3)<<2 | 0x0) << 16;
 		}else{
 			mesh->type = 2;
 			Lr[4] = Lr[2] - Lr[0];
@@ -86,6 +96,15 @@ int LibUMesh2_Create(const double u[2], const double v[2], UMesh2 *mesh){
 			mesh->inc01[4*2+2*0+1] = 0;
 			mesh->inc01[4*2+2*1+0] = 0;
 			mesh->inc01[4*2+2*1+1] = 1;
+			
+			mesh->inc12[0] = 0;
+			mesh->inc12[0] |= (( 1+3)<<2 | 0x0) << 0;
+			mesh->inc12[0] |= (( 3+3)<<2 | 0x1) << 8;
+			mesh->inc12[0] |= ((-2+3)<<2 | 0x0) << 16;
+			mesh->inc12[1] = 0;
+			mesh->inc12[1] |= (( 2+3)<<2 | 0x1) << 0;
+			mesh->inc12[1] |= ((-1+3)<<2 | 0x3) << 8;
+			mesh->inc12[1] |= ((-3+3)<<2 | 0x2) << 16;
 		}
 		len[2] = hypot(Lr[4], Lr[5]);
 		const double nlen2[3] = {

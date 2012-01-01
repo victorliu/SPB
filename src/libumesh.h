@@ -80,13 +80,21 @@ typedef struct UMesh2_struct{
 	int n_faces;
 	
 	// inc12 is the incidence matrix between edges and faces
-	//         u0 v0  w u1 v1
-	// face1 [  1 -1  0 -1  1 ] for an orthogonal lattice
-	// face2 [  0  0  0  0  0 ]
+	//    4 x {which u-off v-off}
+	// face0 [ 1 0 0   2 1 0   -1 0 1   -2 0 0 ] for a square lattice
+	// face1 [ 0 ]
 	// or for a non-orthogonal lattice:
-	//  [ 1  0 -1  0  1 ]
-	//  [ 0 -1  1 -1  0 ]
-	signed char inc12[2*(2+1+2)];
+	//  [ 1 0 0    2 1 0   -3 0 0   0 0 0 ] for type 1
+	//  [ 3 0 0   -1 0 1   -2 0 0   0 0 0 ]
+	//signed char inc12[2*4*3];
+	unsigned int inc12[2];
+#define LibUMesh2_inc12_getedge(UI,EI) (((UI)>>((EI)<<3))&0xFF)
+#define LibUMesh2_inc12_which_MASK(UC) 0x1C
+#define LibUMesh2_inc12_uoff_MASK(UC)  0x02
+#define LibUMesh2_inc12_voff_MASK(UC)  0x01
+#define LibUMesh2_inc12_which(UC) (((int)(((UC)&LibUMesh2_inc12_which_MASK)>>2)-3)
+#define LibUMesh2_inc12_uoff(UC) ((int)((UC)&LibUMesh2_inc12_uoff_MASK))
+#define LibUMesh2_inc12_voff(UC) ((int)((UC)&LibUMesh2_inc12_voff_MASK))
 	
 	// Diagonal hodge stars for vertices, edges, and faces
 	double star0, star1[3], star2[2];
@@ -197,12 +205,12 @@ typedef struct UMesh3_struct{
 	// We pack the above into bits: top 5 bits for which+7, bottom 3 for a,b,c-off:
 	// lowest order 8 bits for first edge, etc.
 	unsigned int inc12[12];
-#define LibUMesh3_inc12_getedge(UI,EI) ((UI)>>((EI)<<3))
-#define LibUMesh3_inc12_which_MASK(UC) 0x1f
-#define LibUMesh3_inc12_aoff_MASK(UC)  0x4
-#define LibUMesh3_inc12_boff_MASK(UC)  0x2
-#define LibUMesh3_inc12_coff_MASK(UC)  0x1
-#define LibUMesh3_inc12_which(UC) (((int)(((UC)>>3)&LibUMesh3_inc12_which_MASK))-7)
+#define LibUMesh3_inc12_getedge(UI,EI) (((UI)>>((EI)<<3))&0xFF)
+#define LibUMesh3_inc12_which_MASK(UC) 0xF8
+#define LibUMesh3_inc12_aoff_MASK(UC)  0x04
+#define LibUMesh3_inc12_boff_MASK(UC)  0x02
+#define LibUMesh3_inc12_coff_MASK(UC)  0x01
+#define LibUMesh3_inc12_which(UC) (((int)(((UC)&LibUMesh3_inc12_which_MASK)>>3)-7)
 #define LibUMesh3_inc12_aoff(UC) ((int)((UC)&LibUMesh3_inc12_aoff_MASK))
 #define LibUMesh3_inc12_boff(UC) ((int)((UC)&LibUMesh3_inc12_boff_MASK))
 #define LibUMesh3_inc12_coff(UC) ((int)((UC)&LibUMesh3_inc12_coff_MASK))
@@ -214,11 +222,11 @@ typedef struct UMesh3_struct{
 	//int inc23[6*6*4];
 	// We pack the above into bits: top 5 bits for which+12, bottom 3 for a,b,c-off:
 	unsigned char inc23[6*6];
-#define LibUMesh3_inc23_which(UC) (((int)(((UC)>>3)&LibUMesh3_inc23_which_MASK))-12)
-#define LibUMesh3_inc23_which_MASK(UC) 0x1f
-#define LibUMesh3_inc23_aoff_MASK(UC)  0x4
-#define LibUMesh3_inc23_boff_MASK(UC)  0x2
-#define LibUMesh3_inc23_coff_MASK(UC)  0x1
+#define LibUMesh3_inc23_which_MASK(UC) 0xF8
+#define LibUMesh3_inc23_aoff_MASK(UC)  0x04
+#define LibUMesh3_inc23_boff_MASK(UC)  0x02
+#define LibUMesh3_inc23_coff_MASK(UC)  0x01
+#define LibUMesh3_inc23_which(UC) (((int)(((UC)&LibUMesh3_inc23_which_MASK)>>3)-12)
 #define LibUMesh3_inc23_aoff(UC) ((int)((UC)&LibUMesh3_inc23_aoff_MASK))
 #define LibUMesh3_inc23_boff(UC) ((int)((UC)&LibUMesh3_inc23_boff_MASK))
 #define LibUMesh3_inc23_coff(UC) ((int)((UC)&LibUMesh3_inc23_coff_MASK))
