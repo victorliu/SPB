@@ -1,13 +1,15 @@
+OPT = -O3
+
 # C and C++ compilers
 CC = gcc
 CXX = g++
 
 # C and C++ compilation flags
 # -DENABLE_S4_TRACE  -DENABLE_RCWA_TRACE -DDUMP_MATRICES
-FLAGS = -m32 -O0 -ggdb -DUSE_LAPACK -DUSE_BLAS -DHAVE_PTHREADS -DHAVE_CHOLMOD -DHAVE_FFTW3 -Wall -Wextra
+FLAGS = -m32 $(OPT) -DUSE_LAPACK -DUSE_BLAS -DHAVE_PTHREADS -DHAVE_CHOLMOD -DHAVE_FFTW3 -Wall -Wextra
 CFLAGS = $(FLAGS)
 CXXFLAGS = $(FLAGS)
-LDFLAGS = -m32 -O0 -ggdb
+LDFLAGS = -m32 $(OPT)
 
 RNP_INC = -I/d/dev/cpp/rnp/inc
 

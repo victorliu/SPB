@@ -1,5 +1,8 @@
 #include "LDL2.h"
 #include <cstdlib>
+extern "C"{
+#include "mem.h"
+}
 //#include <iostream>
 
 LDL2::LDL2():
@@ -15,13 +18,13 @@ LDL2::~LDL2(){
 }
 void LDL2::ReduceState(int targstate){
 	if(targstate < 2){
-		if(NULL != Li){ free(Li); }
-		if(NULL != Lx){ free(Lx); }
-		if(NULL != D){ free(D); }
+		if(NULL != Li){ SPB_Free(Li, "Li at " __FILE__ ":" STR(__LINE__)); Li = NULL; }
+		if(NULL != Lx){ SPB_Free(Lx, "Lx at " __FILE__ ":" STR(__LINE__)); Lx = NULL; }
+		if(NULL != D){ SPB_Free(D, "D at " __FILE__ ":" STR(__LINE__)); D = NULL; }
 		if(targstate < 1){
-			if(NULL != Lp){ free(Lp); }
-			if(NULL != Parent){ free(Parent); }
-			if(NULL != Lnz){ free(Lnz); }
+			if(NULL != Lp){ SPB_Free(Lp, "Lp at " __FILE__ ":" STR(__LINE__)); Lp = NULL; }
+			if(NULL != Parent){ SPB_Free(Parent, "Parent at " __FILE__ ":" STR(__LINE__)); Parent = NULL; }
+			if(NULL != Lnz){ SPB_Free(Lnz, "Lnz at " __FILE__ ":" STR(__LINE__)); Lnz = NULL; }
 			lastA = NULL;
 		}
 	}
@@ -48,13 +51,13 @@ int LDL2::Analyze(const HermitianMatrixProvider& A){
 	const int nbmax2 = A.GetMaxBlockSize();
 	const int nbmax = nbmax2/2;
 	
-	Lp = (int*)malloc(sizeof(int) * (n+1));
-	Parent = (int*)malloc(sizeof(int) * n);
-	Lnz = (int*)malloc(sizeof(int) * n);
+	Lp = SPB_Alloc(int, n+1, "Lp at " __FILE__ ":" STR(__LINE__));
+	Parent = SPB_Alloc(int, n, "Parent at " __FILE__ ":" STR(__LINE__));
+	Lnz = SPB_Alloc(int, n, "Lnz at " __FILE__ ":" STR(__LINE__));
 	
-	int *Flag = (int*)malloc(sizeof(int) * n);
-	int *rowptr = (int*)malloc(sizeof(int) * (nbmax2+1));
-	int *colind = (int*)malloc(sizeof(int) * A.GetMaxNNZPerRow()*nbmax2);
+	int *Flag = SPB_Alloc(int, n, "Flag at " __FILE__ ":" STR(__LINE__));
+	int *rowptr = SPB_Alloc(int, nbmax2+1, "rowptr at " __FILE__ ":" STR(__LINE__));
+	int *colind = SPB_Alloc(int, A.GetMaxNNZPerRow()*nbmax2, "colind at " __FILE__ ":" STR(__LINE__));
 	
 	A.BeginBlockSymbolic();
 	
@@ -98,9 +101,9 @@ int LDL2::Analyze(const HermitianMatrixProvider& A){
 		Lp[k+1] = Lp[k] + Lnz[k];
 	}
 	
-	free(colind);
-	free(rowptr);
-	free(Flag);
+	SPB_Free(colind, "colind at " __FILE__ ":" STR(__LINE__));
+	SPB_Free(rowptr, "rowptr at " __FILE__ ":" STR(__LINE__));
+	SPB_Free(Flag, "Flag at " __FILE__ ":" STR(__LINE__));
 	
 	state = 1;
 	lastA = &A;
@@ -160,17 +163,17 @@ int LDL2::Factorize(const HermitianMatrixProvider& A){
 	
 	const int nbmax2 = A.GetMaxBlockSize();
 	const int nbmax = nbmax2/2;
+
+	Li = SPB_Alloc(int, Lp[n], "Li at " __FILE__ ":" STR(__LINE__));
+	Lx = SPB_Alloc(complex_t, 4*Lp[n], "Lx at " __FILE__ ":" STR(__LINE__));
+	D  = SPB_Alloc(complex_t, 4*n, "D at " __FILE__ ":" STR(__LINE__));
 	
-	Li = (int*)malloc(sizeof(int) * Lp[n]);
-	Lx = (complex_t*)malloc(sizeof(complex_t) * 4*Lp[n]);
-	D  = (complex_t*)malloc(sizeof(complex_t) * 4*n);
-	
-	complex_t *Y = (complex_t*)malloc(sizeof(complex_t) * 4*n);
-	int *Pattern = (int*)malloc(sizeof(int) * n);
-	int *Flag = (int*)malloc(sizeof(int) * n);
-	int *rowptr = (int*)malloc(sizeof(int) * (nbmax2+1));
-	int *colind = (int*)malloc(sizeof(int) * A.GetMaxNNZPerRow()*nbmax2);
-	complex_t *colval = (complex_t*)malloc(sizeof(complex_t) * A.GetMaxNNZPerRow()*nbmax2);
+	complex_t *Y = SPB_Alloc(complex_t, 4*n, "Y at " __FILE__ ":" STR(__LINE__));
+	int *Pattern = SPB_Alloc(int, n, "Pattern at " __FILE__ ":" STR(__LINE__));
+	int *Flag = SPB_Alloc(int, n, "Flag at " __FILE__ ":" STR(__LINE__));
+	int *rowptr = SPB_Alloc(int, nbmax2+1, "rowptr at " __FILE__ ":" STR(__LINE__));
+	int *colind = SPB_Alloc(int, A.GetMaxNNZPerRow()*nbmax2, "colind at " __FILE__ ":" STR(__LINE__));
+	complex_t *colval = SPB_Alloc(complex_t, A.GetMaxNNZPerRow()*nbmax2, "colval at " __FILE__ ":" STR(__LINE__));
 	
 	A.BeginBlockNumeric();
 	
@@ -227,18 +230,19 @@ int LDL2::Factorize(const HermitianMatrixProvider& A){
 			}
 		}
 	}
+	/*
 	for(k = 0; k < n; k++){
 		//std::cout << "[ " << D[4*k+0] << ", " << D[4*k+2] << std::endl;
 		//std::cout << "  " << D[4*k+1] << ", " << D[4*k+3] << " ]" << std::endl;
 		C2INV(&D[4*k]);
-	}
+	}*/
 	
-	free(colval);
-	free(colind);
-	free(rowptr);
-	free(Flag);
-	free(Pattern);
-	free(Y);
+	SPB_Free(colval, "colval at " __FILE__ ":" STR(__LINE__));
+	SPB_Free(colind, "colind at " __FILE__ ":" STR(__LINE__));
+	SPB_Free(rowptr, "rowptr at " __FILE__ ":" STR(__LINE__));
+	SPB_Free(Flag, "Flag at " __FILE__ ":" STR(__LINE__));
+	SPB_Free(Pattern, "Pattern at " __FILE__ ":" STR(__LINE__));
+	SPB_Free(Y, "Y at " __FILE__ ":" STR(__LINE__));
 	
 	state = 2;
 	lastA = &A;
@@ -273,6 +277,7 @@ int LDL2::SolveL(complex_t *x) const{
 int LDL2::SolveD(complex_t *x) const{
 	if(state < 2){ return -1; }
 
+	/*
 	for(int j = 0; j < n; j++){
 		//X[j] *= D[j]; // D is actually inv(D)
 		complex_t s, t;
@@ -280,6 +285,14 @@ int LDL2::SolveD(complex_t *x) const{
 		s+= D[4*j+2] * x[2*j+1];
 		t = D[4*j+1] * x[2*j+0];
 		t+= D[4*j+3] * x[2*j+1];
+		x[2*j+0] = s;
+		x[2*j+1] = t;
+	}*/
+	for(int j = 0; j < n; j++){
+		//X[j] *= D[j]; // D is actually inv(D)
+		complex_t det(D[4*j+0]*D[4*j+3]-D[4*j+1]*D[4*j+2]);
+		complex_t s((D[4*j+3] * x[2*j+0] - D[4*j+2] * x[2*j+1]) / det);
+		complex_t t((D[4*j+0] * x[2*j+1] - D[4*j+1] * x[2*j+0]) / det);
 		x[2*j+0] = s;
 		x[2*j+1] = t;
 	}

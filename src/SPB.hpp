@@ -13,12 +13,11 @@ extern "C" {
 #include "libumesh.h"
 }
 #include "HermitianMatrixProvider.h"
-#include "IntervalEigensolver.h"
 #include "LDL2.h"
 
-#define SPB_VERB(LVL, STR, ...) do{ \
-		if(verbosity >= LVL){ \
-			fprintf(stdout, STR, __VA_ARGS__); fflush(stdout); \
+#define SPB_VERB(LVL, ...) do{ \
+		if(verbosity >= (LVL)){ \
+			fprintf(stdout, __VA_ARGS__); fflush(stdout); \
 		} \
 	}while(0)
 
@@ -26,6 +25,10 @@ namespace SPB{
 
 typedef std::complex<double> complex_t;
 
+struct ApproximateFrequency{
+	double lower, upper;
+	int n;
+};
 
 class Lattice{
 protected:
@@ -149,9 +152,9 @@ public:
 };
 
 
-class EigenOperator{
+class EigenOperator : public HermitianMatrixProvider{
 public:
-	virtual size_t GetSize() const = 0;
+	// Newly defined by EigenOperator
 	virtual void SetShift(double shift) = 0;
 	virtual void Inertia(int *nlower, int *nupper) = 0;
 	
@@ -165,6 +168,7 @@ public:
 		double a, b;
 		int n;
 	};
+	typedef std::list<IntervalCount> interval_list_t;
 	typedef HermitianMatrixProvider::complex_t complex_t;
 
 	// set the lower and upper bound of eigenvalues that are sought
@@ -186,9 +190,12 @@ public:
 	int SetProgressFunction(ProgressFunction *func);
 	
 	void SetInterval(double lower, double upper);
+	void SetTolerance(double tol);
 	
 	int SolveCold(EigenOperator *A);
 	int SolveWarm(EigenOperator *A, double max_change = 0);
+	
+	const interval_list_t& GetIntervals() const;
 private:
 	double range[2];
 	int maxvals;
@@ -210,22 +217,19 @@ private:
 	void SearchInterval(EigenOperator *A, double a, double b, int na, int nb);
 };
 
-class BandSolver : public EigenOperator, public IntervalEigensolver{
+class BandSolver : public EigenOperator{
 protected:
 	int dim;
 	int res[3];
 	
 	int verbosity;
-	// method options
-	int use_direct_solver; // set to 1 if the shift-invert operator should be directly factored
-	int force_hermitian; // set to 1 if we should assume the problem is hermitian
-	int force_invsym; // set to 1 if we shoud assume the structure is inversion symmetric
 	
 	std::vector<Material> material;
 	std::map<std::string,size_t> matmap;
 	ShapeSet shapeset;
 	
 	// Solution
+	double k[3];
 	double last_k[3]; // in Lk basis
 	
 	struct{
@@ -234,20 +238,16 @@ protected:
 		size_t n_arnoldi;
 	} IRA_data;
 	size_t n_wanted;
-	double approxtol, tol;
-	double target[2];
 	
-	virtual size_t GetProblemSize() const = 0;
-	virtual void StructureChanged(){};
+	IntervalEigensolver interval_solver;
+	LDL2 ldl;
+	
+	virtual void PrepareOperator(){}
 public:
 	BandSolver(const Lattice &L);
 	virtual ~BandSolver();
 	
 	void SetResolution(size_t *N);
-	void SetNumBands(size_t n);
-	void SetTargetFrequencyRange(double lower, double upper);
-	void SetApproximationTolerance(double tolerance){ approxtol = tolerance; }
-	void SetTolerance(double tolerance){ tol = tolerance; }
 	void SetVerbosity(int verb){ verbosity = verb; }
 	
 	void AddMaterial(const Material &mat){ matmap[mat.name] = material.size(); material.push_back(mat); }
@@ -257,15 +257,28 @@ public:
 	virtual int OutputEpsilon(int *res, const char *filename, const char *format) const = 0;
 	
 	void ClearSolution();
-	virtual int SolveK(const double *k) = 0;
-	complex_t* GetFrequencies() const;
-	size_t GetNumSolutions() const;
-	
-	int IRASolve(size_t n);
+	void SetK(const double *k);
+	int GetApproximateFrequencies(
+		double lower, double upper,
+		double tol,
+		std::list<ApproximateFrequency> &freqs
+	);
+	int GetBandsNear(
+		double target, int n_bands,
+		double tol,
+		std::vector<double> &freqs,
+		complex_t **bands
+	);
+	int GetPerturbedFrequencies(
+		int n_bands,
+		std::vector<double> &freqs,
+		complex_t **bands
+	);
 };
 
-class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
+class BandSolver_Ez : public BandSolver{
 	typedef SPB::complex_t complex_t;
+	typedef RNP::Sparse::TCRSMatrix<complex_t> sparse_t;
 	Lattice2 L;
 	
 	size_t N;
@@ -292,6 +305,13 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 	// of 4 zero bits is encountered.
 	int *matind;
 	
+	// ordering of the simplices within a cell (within a matrix block)
+	// first int is the dimension of the simplex
+	// second int is the index of the corresponding mesh element.
+	int ind2el[2*6];
+	int el2ind[6];
+	int nel; // number of elements (<= 6)
+	
 	// npoles is length N.
 	// npoles[q] is the number of poles at cell index q.
 	int *npoles;
@@ -299,8 +319,6 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 	// vector of all unique epsilon values
 	std::vector<int> epsind;
 	std::vector<double> epsval;
-
-	LDL2 ldl;
 	
 	UMesh2 mesh;
 	
@@ -312,31 +330,22 @@ class BandSolver_Ez : public BandSolver, public HermitianMatrixProvider{
 		double shift;
 	} assembly_data;
 	
-	// When structure changes, invalidate A, B, ind
-	// When K changes, symbolic A still good, need to update it
-	// When shift changes, symbolic A still good, numeric needs regenerating
-	// If ind is not NULL, we assume we have an A that is symbolically factored, and B is valid
-	bool valid_A_numeric;
-	
-	void StructureChanged();
+	void PrepareOperator();
 	int MakeMesh();
 	int UpdateA(const double k[2]);
 	
 	void PrintField(const std::complex<double> *x, const char *filename = NULL) const;
 protected:
-	size_t GetSize() const;
 	void Bop(const std::complex<double> *from, std::complex<double> *to) const;
 	void ShiftInv(const complex_t *from, complex_t *to) const;
 	int GetN() const;
-	size_t GetProblemSize() const;
 public:
 	BandSolver_Ez(double Lr[4]);
 	~BandSolver_Ez();
 	
 	void SetResolution(size_t *N){ res[0] = N[0]; res[1] = N[1]; }
 	int OutputEpsilon(int *res, const char *filename, const char *format) const;
-	int SolveK(const double *k);
-		
+	
 	void SetShift(double shift);
 	void Inertia(int *nlower, int *nupper);
 	int GetMaxBlockSize() const;

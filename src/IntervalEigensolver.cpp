@@ -35,6 +35,9 @@ void SPB::IntervalEigensolver::SetInterval(double lower, double upper){
 	range[0] = lower;
 	range[1] = upper;
 }
+void SPB::IntervalEigensolver::SetTolerance(double tolerance){
+	tol = tolerance;
+}
 
 
 struct ival{
@@ -56,7 +59,7 @@ void SPB::IntervalEigensolver::SearchInterval(SPB::EigenOperator *A, double a, d
 		istack.pop();
 //std::cout << "a,b=" << top.a << "," << top.b << ", na,nb=" << top.na << "," << top.nb << std::endl;
 		if(top.nb <= top.na){ continue; }
-		if(top.b - top.a < tol){
+		if(top.b - top.a < tol*(range[1]-range[0])){
 			IntervalCount c;
 			c.a = top.a;
 			c.b = top.b;
@@ -97,7 +100,7 @@ int SPB::IntervalEigensolver::SolveCold(SPB::EigenOperator *A){
 	}
 	exit(0);
 */
-	
+	ivals.clear();
 	A->SetShift(range[0]);
 	A->Inertia(&na, &dummy);
 std::cerr << "lower = " << na << ", upper = " << dummy << std::endl;
@@ -154,6 +157,10 @@ int SPB::IntervalEigensolver::SolveWarm(SPB::EigenOperator *A, double max_change
 			SearchInterval(A, b, range[1], nb, nupper);
 		}
 	}
+	return 0;
 }
 
+const SPB::IntervalEigensolver::interval_list_t& SPB::IntervalEigensolver::GetIntervals() const{
+	return ivals;
+}
 

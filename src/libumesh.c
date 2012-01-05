@@ -27,6 +27,60 @@ int LibUMesh2_Create(const double u[2], const double v[2], UMesh2 *mesh){
 	mesh->Lr[3] = v[1];
 	double *Lr = mesh->Lr;
 	
+	mesh->ld[0] = 3;
+	mesh->ld[1] = 2;
+	mesh->d[0] = &mesh->d10;
+	mesh->d[1] = &mesh->d21;
+	mesh->dcols[0] = 2;
+	memset(mesh->d10, 0, sizeof(unsigned short) * 3*2);
+	memset(mesh->d21, 0, sizeof(unsigned short) * 2*4);
+	if(fabs(uv) < DBL_EPSILON * uxv){
+		mesh->d10[0+0*3] = 0x80;
+		mesh->d10[0+1*3] = 0x10;
+		mesh->d10[1+0*3] = 0x80;
+		mesh->d10[1+1*3] = 0x20;
+		mesh->drows[0] = 2;
+		
+		mesh->d21[0+0*2] = 0x00;
+		mesh->d21[0+1*2] = 0x11;
+		mesh->d21[0+2*2] = 0xA0;
+		mesh->d21[0+3*2] = 0x81;
+		mesh->drows[1] = 1;
+		mesh->dcols[1] = 4;
+	}else{
+		mesh->d10[0+0*3] = 0x80;
+		mesh->d10[0+1*3] = 0x10;
+		mesh->d10[1+0*3] = 0x80;
+		mesh->d10[1+1*3] = 0xA0;
+		mesh->drows[0] = 3;
+		mesh->drows[1] = 2;
+		mesh->dcols[1] = 3;
+		if(uv < 0){ // wide angle between u and v
+			mesh->d10[2+0*3] = 0x80;
+			mesh->d10[2+1*3] = 0x30;
+			
+			mesh->d21[0+0*2] = 0x00;
+			mesh->d21[0+1*2] = 0x11;
+			mesh->d21[0+2*2] = 0x82;
+			
+			mesh->d21[0+0*2] = 0x02;
+			mesh->d21[0+1*2] = 0xA0;
+			mesh->d21[0+2*2] = 0x81;
+		}else{
+			mesh->d10[2+0*3] = 0x90;
+			mesh->d10[2+1*3] = 0x20;
+			
+			mesh->d21[0+0*2] = 0x00;
+			mesh->d21[0+1*2] = 0x02;
+			mesh->d21[0+2*2] = 0x81;
+			
+			mesh->d21[0+0*2] = 0x11;
+			mesh->d21[0+1*2] = 0xA0;
+			mesh->d21[0+2*2] = 0x82;
+		}
+	}
+	
+	
 	// u edge
 	mesh->inc01[4*0+2*0+0] = 0; // from u
 	mesh->inc01[4*0+2*0+1] = 0; // from v

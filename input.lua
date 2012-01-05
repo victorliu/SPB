@@ -8,11 +8,7 @@ S = SPB.NewBandSolver{
 }
 
 S:SetOptions{
-	NumBands = 30,
-	Resolution = {10, 10},
-	TargetFrequencyRange = {0.2, 0.6},
-	ApproximationTolerance = 1e-4,
-	Tolerance = 1e-7,
+	Resolution = {20, 20},
 	Verbosity = 0
 }
 
@@ -48,24 +44,39 @@ S:SetRectangle{
 }
 --[[
 S:OutputEpsilon{
-	Resolution = {5,5},
+	Resolution = {20,20},
 	Filename = "epsilon.txt",
 	Format = 'gnuplot'
 }
 os.exit(0)
 ]]
-for kx = 0,0.5,0.01 do
-	S:SolveK{kx,0}
+
+for kx = 0,0.5,0.02 do
+	S:SetK{kx,0}
+	interval_list = S:GetApproximateFrequencies{
+		TargetFrequencyRange = {0.2, 0.6},
+		Tolerance = 1e-2
+	}
 
 	io.stdout:write(kx)
-	for i,freq in ipairs(S:GetFrequencies()) do
-		if freq[1] >= 0 then
-			io.stdout:write('\t' .. freq[1])
-		end
+	for i,interval in ipairs(interval_list) do
+		io.stdout:write('\t[' .. interval[1][1] .. ',' .. interval[1][2] .. ']:' .. interval[2]);
 	end
 	io.stdout:write('\n')
 	io.stdout:flush()
+	--[[
+	freqs,bands = S:GetBandsNear{
+		Frequency = 0.32,
+		NumBands = 4,
+		Tolerance = 1e-7
+	}
+	pfreqs = S:GetPerturbedFrequencies{
+		Frequencies = freqs,
+		Bands = bands
+	}
+	]]
 end
+
 
 
 --[[

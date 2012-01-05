@@ -4,6 +4,10 @@ extern "C" {
 #include "SPB.h"
 }
 #include "SPB.hpp"
+#include "util.h"
+extern "C"{
+#include "mem.h"
+}
 
 // Glue between public C interface and private C++ implementation.
 
@@ -23,7 +27,7 @@ SPB_BandSolver* SPB_BandSolver_New(int dim, char pol, double *Lr){
 	}else if(3 == dim){
 	}
 	if(NULL != S){
-		SPB_BandSolver* ret = (SPB_BandSolver*)malloc(sizeof(SPB_BandSolver));
+		SPB_BandSolver* ret = SPB_Alloc(SPB_BandSolver, 1, "ret at " __FILE__ ":" STR(__LINE__));
 		if(NULL != ret){
 			ret->dim = dim;
 			ret->pol = pol;
@@ -37,7 +41,7 @@ SPB_BandSolver* SPB_BandSolver_New(int dim, char pol, double *Lr){
 void SPB_BandSolver_Destroy(SPB_BandSolver *S){
 	if(NULL == S){ return; }
 	delete S->S;
-	free(S);
+	SPB_Free(S, "S at " __FILE__ ":" STR(__LINE__));
 }
 
 
@@ -143,24 +147,6 @@ int SPB_BandSolver_OutputEpsilon(const SPB_BandSolver *S,
 	return -1;
 }
 
-int SPB_BandSolver_SetNumWanted(SPB_BandSolver *S, int n){
-	if(NULL == S){ return -1; }
-	if(n < 0){ return -2; }
-	S->S->SetNumBands(n);
-	return 0;
-}
-int SPB_BandSolver_SetApproximationTolerance(SPB_BandSolver *S, double tol){
-	if(NULL == S){ return -1; }
-	if(tol < 0.){ return -2; }
-	S->S->SetApproximationTolerance(tol);
-	return 0;
-}
-int SPB_BandSolver_SetTolerance(SPB_BandSolver *S, double tol){
-	if(NULL == S){ return -1; }
-	if(tol < 0.){ return -2; }
-	S->S->SetTolerance(tol);
-	return 0;
-}
 int SPB_BandSolver_SetResolution(SPB_BandSolver *S, int *res){
 	int i;
 	size_t n[3];
@@ -173,74 +159,42 @@ int SPB_BandSolver_SetResolution(SPB_BandSolver *S, int *res){
 	S->S->SetResolution(n);
 	return 0;
 }
-int SPB_BandSolver_SetTargetFrequencyRange(SPB_BandSolver *S, double freq0, double freq1){
-	if(NULL == S){ return -1; }
-	S->S->SetTargetFrequencyRange(freq0, freq1);
-	return -1;
-}
 int SPB_BandSolver_SetVerbosity(SPB_BandSolver *S, int v){
 	if(NULL == S){ return -1; }
 	S->S->SetVerbosity(v);
 	return 0;
 }
-int SPB_BandSolver_SolveK(SPB_BandSolver *S, double *k){
+int SPB_BandSolver_SetK(SPB_BandSolver *S, double *k){
 	if(NULL == S){ return -1; }
 	if(NULL == k){ return -2; }
-	S->S->SolveK(k);
+	S->S->SetK(k);
 	return 0;
 }
 
-static int freq_sorter(const void *a, const void *b){
-	double diff;
-#ifdef SPB_USING_C99_COMPLEX
-	double complex *za = (double complex*)a;
-	double complex *zb = (double complex*)b;
-	diff = creal(*za) - creal(*zb);
-#else
-	double *ra = (double*)a;
-	double *rb = (double*)b;
-	diff = *ra - *rb;
-#endif
-	if(0 == diff){ return 0; }
-	if(diff > 0){ return 1; }
-	return -1;
-}
-int SPB_BandSolver_GetFrequencies(const SPB_BandSolver *S, int *n, SPB_complex_ptr z){
+int SPB_BandSolver_GetApproximateFrequencies(
+	SPB_BandSolver *S,
+	double lower, double upper,
+	double tol,
+	int *n, SPB_ApproximateFrequency **lst
+){
 	if(NULL == S){ return -1; }
-	if(NULL == n){ return -2; }
-	if(NULL == z){ return -3; }
-	SPB::complex_t* f = S->S->GetFrequencies();
-	int capacity = *n;
-	int fsize = SPB_BandSolver_GetNumFrequencies(S);
-	if(fsize < capacity){
-		*n = fsize;
-	}
-	for(int i = 0; i < *n; ++i){
-#ifdef SPB_USING_C99_COMPLEX
-		z[i] = f[i].real() + f[i].imag() * _Complex_I;
-#else
-		z[2*i+0] = f[i].real();
-		z[2*i+1] = f[i].imag();
-#endif
-	}
-	qsort(z, *n,
-#ifdef SPB_USING_C99_COMPLEX
-		sizeof(double complex),
-#else
-		2*sizeof(double),
-#endif
-		&freq_sorter
-	);
+	if(lower <= 0){ return -2; }
+	if(upper <= lower){ return -3; }
+	if(tol <= 0){ return -4; }
+	if(NULL == n){ return -5; }
+	if(NULL == lst){ return -6; }
 	
+	std::list<SPB::ApproximateFrequency> freqs;
+	S->S->GetApproximateFrequencies(lower, upper, tol, freqs);
+	
+	*lst = NULL;
+	for(std::list<SPB::ApproximateFrequency>::const_iterator i = freqs.begin(); i != freqs.end(); ++i){
+		*lst = SPB_Alloc(SPB_ApproximateFrequency, 1, "lst at " __FILE__ ":" STR(__LINE__));
+		(*lst)->lower = i->lower;
+		(*lst)->upper = i->upper;
+		(*lst)->n = i->n;
+		(*lst)->next = NULL;
+		lst = &((*lst)->next);
+	}
 	return 0;
-}
-int SPB_BandSolver_GetNumFrequencies(const SPB_BandSolver *S){
-	if(NULL == S){ return -1; }
-	return S->S->GetNumSolutions();
-}
-int SPB_BandSolver_GetBand(const SPB_BandSolver *S, int n, SPB_complex_ptr z){
-	if(NULL == S){ return -1; }
-	// check that n is valid
-	if(NULL == z){ return -3; }
-	return -1;
 }

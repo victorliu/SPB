@@ -65,6 +65,7 @@ typedef struct UMesh2_struct{
 	//             (Lr[0],Lr[1])
 	// etc.
 	
+	
 	// inc01 is the incidence matrix between edges and vertices
 	//        from to
 	//         u v u v
@@ -84,17 +85,43 @@ typedef struct UMesh2_struct{
 	// face0 [ 1 0 0   2 1 0   -1 0 1   -2 0 0 ] for a square lattice
 	// face1 [ 0 ]
 	// or for a non-orthogonal lattice:
-	//  [ 1 0 0    2 1 0   -3 0 0   0 0 0 ] for type 1
+	//  [ 1 0 0    2 1 0   -3 1 1   0 0 0 ] for type 1
 	//  [ 3 0 0   -1 0 1   -2 0 0   0 0 0 ]
 	//signed char inc12[2*4*3];
 	unsigned int inc12[2];
 #define LibUMesh2_inc12_getedge(UI,EI) (((UI)>>((EI)<<3))&0xFF)
-#define LibUMesh2_inc12_which_MASK(UC) 0x1C
-#define LibUMesh2_inc12_uoff_MASK(UC)  0x02
-#define LibUMesh2_inc12_voff_MASK(UC)  0x01
-#define LibUMesh2_inc12_which(UC) (((int)(((UC)&LibUMesh2_inc12_which_MASK)>>2)-3)
+#define LibUMesh2_inc12_which_MASK 0x1C
+#define LibUMesh2_inc12_uoff_MASK  0x02
+#define LibUMesh2_inc12_voff_MASK  0x01
+#define LibUMesh2_inc12_which(UC) ((int)(((UC)&LibUMesh2_inc12_which_MASK)>>2)-3)
 #define LibUMesh2_inc12_uoff(UC) ((int)((UC)&LibUMesh2_inc12_uoff_MASK))
 #define LibUMesh2_inc12_voff(UC) ((int)((UC)&LibUMesh2_inc12_voff_MASK))
+	
+	
+#define LibUMesh_d_ind_MASK  0x0F
+#define LibUMesh_d_uoff_MASK 0x10
+#define LibUMesh_d_voff_MASK 0x20
+#define LibUMesh_d_woff_MASK 0x40
+#define LibUMesh_d_sign_MASK 0x80
+
+	// d10 tells which vertices are incident on each edge.
+	// Each row is one edge (there can be up to 3 rows).
+	// There are two columns; the first is the from vertex (-1),
+	// the second is the to vertex (+1).
+	// Each entry stores the element index (for vertices, always zero)
+	// in the lowest 4 bits. The next bit give give the u-offset of
+	// the vertex, and the next higher bit gives the v-offset.
+	// The offsets are encoded as {0,+1} -> {0,1}. The highest
+	// bit gives the sign of the vertex (0 = +1, 1 = -1). For d10
+	// the first column is all -1, the second all +1.
+	unsigned char d10[3*2]; // #edges by 2 matrix, stride 3
+	
+	// d21 tells which edges are incident on each face.
+	unsigned char d21[2*4]; // #faces by #edges/face matrix, stride 2
+	unsigned char *d[2];
+	unsigned char ld[2];
+	unsigned char drows[2];
+	unsigned char dcols[2];
 	
 	// Diagonal hodge stars for vertices, edges, and faces
 	double star0, star1[3], star2[2];
@@ -206,11 +233,11 @@ typedef struct UMesh3_struct{
 	// lowest order 8 bits for first edge, etc.
 	unsigned int inc12[12];
 #define LibUMesh3_inc12_getedge(UI,EI) (((UI)>>((EI)<<3))&0xFF)
-#define LibUMesh3_inc12_which_MASK(UC) 0xF8
-#define LibUMesh3_inc12_aoff_MASK(UC)  0x04
-#define LibUMesh3_inc12_boff_MASK(UC)  0x02
-#define LibUMesh3_inc12_coff_MASK(UC)  0x01
-#define LibUMesh3_inc12_which(UC) (((int)(((UC)&LibUMesh3_inc12_which_MASK)>>3)-7)
+#define LibUMesh3_inc12_which_MASK 0xF8
+#define LibUMesh3_inc12_aoff_MASK  0x04
+#define LibUMesh3_inc12_boff_MASK  0x02
+#define LibUMesh3_inc12_coff_MASK  0x01
+#define LibUMesh3_inc12_which(UC) ((int)(((UC)&LibUMesh3_inc12_which_MASK)>>3)-7)
 #define LibUMesh3_inc12_aoff(UC) ((int)((UC)&LibUMesh3_inc12_aoff_MASK))
 #define LibUMesh3_inc12_boff(UC) ((int)((UC)&LibUMesh3_inc12_boff_MASK))
 #define LibUMesh3_inc12_coff(UC) ((int)((UC)&LibUMesh3_inc12_coff_MASK))
@@ -222,14 +249,26 @@ typedef struct UMesh3_struct{
 	//int inc23[6*6*4];
 	// We pack the above into bits: top 5 bits for which+12, bottom 3 for a,b,c-off:
 	unsigned char inc23[6*6];
-#define LibUMesh3_inc23_which_MASK(UC) 0xF8
-#define LibUMesh3_inc23_aoff_MASK(UC)  0x04
-#define LibUMesh3_inc23_boff_MASK(UC)  0x02
-#define LibUMesh3_inc23_coff_MASK(UC)  0x01
-#define LibUMesh3_inc23_which(UC) (((int)(((UC)&LibUMesh3_inc23_which_MASK)>>3)-12)
+#define LibUMesh3_inc23_which_MASK 0xF8
+#define LibUMesh3_inc23_aoff_MASK  0x04
+#define LibUMesh3_inc23_boff_MASK  0x02
+#define LibUMesh3_inc23_coff_MASK  0x01
+#define LibUMesh3_inc23_which(UC) ((int)(((UC)&LibUMesh3_inc23_which_MASK)>>3)-12)
 #define LibUMesh3_inc23_aoff(UC) ((int)((UC)&LibUMesh3_inc23_aoff_MASK))
 #define LibUMesh3_inc23_boff(UC) ((int)((UC)&LibUMesh3_inc23_boff_MASK))
 #define LibUMesh3_inc23_coff(UC) ((int)((UC)&LibUMesh3_inc23_coff_MASK))
+	
+	// Each incidence relationship is {-1,0,+1}, plus offset
+	// information {-1,0,+1} in each direction, so we need 3*2 total
+	// bits per incidence matrix entry.
+	// For each {-1,0,+1}, we store them as {2,0,1}
+	// Lowest 2 bits are the incidence relationship,
+	// next 2 are u-offset, next 2 are v-offset
+	unsigned char d10[7*2]; // #edges by 2 matrix, stride 7
+	unsigned char d21[12*4]; // #faces by #edges/face matrix, stride 12
+	unsigned char d32[6*6]; // #tets by #faces/tet matrix, stride 6
+	unsigned char *d[3];
+	unsigned char ld[3]; // strides
 	
 	// Diagonal hodge stars for vertices, edges, faces, and tets.
 	// Each corresponds to the row of the incidence info.

@@ -72,16 +72,36 @@ int SPB_BandSolver_OutputEpsilon(const SPB_BandSolver *S,
 	const char *filename,
 	const char *format);
 
-int SPB_BandSolver_SetNumWanted(SPB_BandSolver *S, int n);
-int SPB_BandSolver_SetApproximationTolerance(SPB_BandSolver *S, double tol);
-int SPB_BandSolver_SetTolerance(SPB_BandSolver *S, double tol);
 int SPB_BandSolver_SetResolution(SPB_BandSolver *S, int *res);
-int SPB_BandSolver_SetTargetFrequencyRange(SPB_BandSolver *S, double freq0, double freq1);
 int SPB_BandSolver_SetVerbosity(SPB_BandSolver *S, int v);
 
-int SPB_BandSolver_SolveK(SPB_BandSolver *S, double *k);
-int SPB_BandSolver_GetFrequencies(const SPB_BandSolver *S, int *n, SPB_complex_ptr z);
-int SPB_BandSolver_GetNumFrequencies(const SPB_BandSolver *S);
-int SPB_BandSolver_GetBand(const SPB_BandSolver *S, int n, SPB_complex_ptr z);
+int SPB_BandSolver_SetK(SPB_BandSolver *S, double *k);
+
+typedef struct tag_SPB_ApproximateFrequency{
+	double lower, upper;
+	int n;
+	struct tag_SPB_ApproximateFrequency *next;
+} SPB_ApproximateFrequency;
+
+int SPB_BandSolver_GetApproximateFrequencies(
+	SPB_BandSolver *S,
+	double lower, double upper,
+	double tol,
+	int *n, SPB_ApproximateFrequency **lst
+);
+int SPB_BandSolver_GetBandsNear(
+	SPB_BandSolver *S,
+	double target,
+	int n_bands,
+	double tol,
+	double *freq,
+	SPB_complex_ptr *bands
+);
+int SPB_BandSolver_GetPerturbedFrequencies(
+	SPB_BandSolver *S,
+	int n_bands,
+	SPB_complex_ptr freq,
+	SPB_complex_ptr *bands
+);
 
 #endif /* _SPB_H_INCLUDED_ */

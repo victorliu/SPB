@@ -14,6 +14,8 @@
 #include <lualib.h>
 #include "luaarg.h"
 #include "SPB.h"
+#include "util.h"
+#include "mem.h"
 
 static void usage(){
 	printf("SPB [-a arg] [-h] [-t thread-count] [-v] [input-file]\n");
@@ -88,8 +90,8 @@ static int Lua_SPB_NewBandSolver(lua_State *L){
 	}
 	
 	/* clean up allocations made by luaarg_parse */
-	free(Lr.m);
-	free(pol);
+	SPB_Free(Lr.m, "Lr.m at " __FILE__ ":" STR(__LINE__));
+	SPB_Free(pol, "pol at " __FILE__ ":" STR(__LINE__));
 	return 1;
 }
 
@@ -100,19 +102,12 @@ static int Lua_SPB_BandSolver__gc(lua_State *L){
 
 static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 	int i;
-	int numbands = 0;
-	double targ[2];
-	double approxtol, tol;
 	int res[3];
 	int verb;
 	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
 	int dim = SPB_BandSolver_GetDimension(S);
 	luaarg_argspec args[] = {
 		{"Resolution"     , luaarg_type_INT_VEC3  , 1, &res[0]},
-		{"NumBands"       , luaarg_type_INT       , 1, &numbands},
-		{"TargetFrequencyRange", luaarg_type_DOUBLE_VEC2, 1, &targ[0]},
-		{"ApproximationTolerance", luaarg_type_DOUBLE, 1, &approxtol},
-		{"Tolerance"      , luaarg_type_DOUBLE    , 1, &tol},
 		{"Verbosity"      , luaarg_type_INT       , 1, &verb},
 		{NULL, 0, 0, NULL}
 	};
@@ -121,23 +116,13 @@ static int Lua_SPB_BandSolver_SetOptions(lua_State *L){
 	}
 	luaarg_parse(L, 2, args);
 	
-	if(numbands < 0){
-		luaL_error(L, "NumBands must >= 0\n");
-	}
 	for(i = 0; i < dim; ++i){
 		if(res[i] <= 0){
 			luaL_error(L, "Resolution must be positive numbers; element %d is %d\n", i+1, res[i]);
 		}
 	}
-	if(tol <= 0 || tol >= 1){
-		luaL_error(L, "Tolerance must be in (0,1)\n");
-	}
 	
-	SPB_BandSolver_SetNumWanted(S, numbands);
-	SPB_BandSolver_SetApproximationTolerance(S, approxtol);
-	SPB_BandSolver_SetTolerance(S, tol);
 	SPB_BandSolver_SetResolution(S, res);
-	SPB_BandSolver_SetTargetFrequencyRange(S, targ[0] * 2*M_PI, targ[1] * 2*M_PI);
 	SPB_BandSolver_SetVerbosity(S, verb);
 	
 	return 0;
@@ -199,10 +184,10 @@ static int Lua_SPB_BandSolver_AddMaterial(lua_State *L){
 			pole.omega_p = data.v[3*i+2] * 2*M_PI;
 			SPB_BandSolver_Material_AddLorentzPole(S, name, &pole);
 		}
-		free(data.v);
+		SPB_Free(data.v, "data.v at " __FILE__ ":" STR(__LINE__));
 	}
 	
-	free(name);
+	SPB_Free(name, "name at " __FILE__ ":" STR(__LINE__));
 	return 0;
 }
 static int Lua_SPB_BandSolver_AddMaterialLorentzPole(lua_State *L){
@@ -220,7 +205,7 @@ static int Lua_SPB_BandSolver_AddMaterialLorentzPole(lua_State *L){
 	
 	SPB_BandSolver_Material_AddLorentzPole(S, name, &pole);
 	
-	free(name);
+	SPB_Free(name, "name at " __FILE__ ":" STR(__LINE__));
 	return 0;
 }
 static int Lua_SPB_BandSolver_SetRectangle(lua_State *L){
@@ -244,7 +229,7 @@ static int Lua_SPB_BandSolver_SetRectangle(lua_State *L){
 	
 	SPB_BandSolver_AddRectangle(S, name, center, hw, angle);
 	
-	free(name);
+	SPB_Free(name, "name at " __FILE__ ":" STR(__LINE__));
 	return 0;
 }
 static int Lua_SPB_BandSolver_OutputEpsilon(lua_State *L){
@@ -266,15 +251,15 @@ static int Lua_SPB_BandSolver_OutputEpsilon(lua_State *L){
 	
 	SPB_BandSolver_OutputEpsilon(S, res, filename, format);
 	
-	free(format);
-	free(filename);
+	SPB_Free(format, "format at " __FILE__ ":" STR(__LINE__));
+	SPB_Free(filename, "filename at " __FILE__ ":" STR(__LINE__));
 	return 0;
 }
-static int Lua_SPB_BandSolver_SolveK(lua_State *L){
-	int i;
+static int Lua_SPB_BandSolver_SetK(lua_State *L){
+	unsigned i;
 	double k[3];
 	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
-	int dim = SPB_BandSolver_GetDimension(S);
+	unsigned dim = SPB_BandSolver_GetDimension(S);
 	luaL_argcheck(L, lua_istable(L, 2) && dim == lua_objlen(L, 2), 2, "Expected k-vector");
 	for(i = 0; i < dim; ++i){
 		lua_pushinteger(L, i+1);
@@ -282,14 +267,52 @@ static int Lua_SPB_BandSolver_SolveK(lua_State *L){
 		k[i] = luaL_checknumber(L, -1);
 		lua_pop(L, 1);
 	}
-	SPB_BandSolver_SolveK(S, k);
+	SPB_BandSolver_SetK(S, k);
 	return 0;
 }
-static int Lua_SPB_BandSolver_GetFrequencies(lua_State *L){
-	int i, n;
-	SPB_complex_ptr z;
+static int Lua_SPB_BandSolver_GetApproximateFrequencies(lua_State *L){
 	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
-	n = SPB_BandSolver_GetNumFrequencies(S);
+	double range[2], tol = 1e-2;
+	luaarg_argspec args[] = {
+		{"TargetFrequencyRange", luaarg_type_DOUBLE_VEC2, 0, &range[0]},
+		{"Tolerance"           , luaarg_type_DOUBLE     , 1, &tol     },
+		{NULL, 0, 0, NULL}
+	};
+	luaarg_parse(L, 2, args);
+	
+	SPB_ApproximateFrequency *list, *cur;
+	int nlist;
+	SPB_BandSolver_GetApproximateFrequencies(S, 2*M_PI*range[0], 2*M_PI*range[1], tol, &nlist, &list);
+	cur = list;
+	
+	lua_createtable(L, nlist,0);
+	int idx = 0;
+	while(NULL != cur){
+		lua_pushinteger(L, ++idx);
+		lua_createtable(L, 2, 0);
+			lua_pushinteger(L, 1);
+			lua_createtable(L, 2, 0);
+				lua_pushinteger(L, 1);
+				lua_pushnumber(L, cur->lower/(2*M_PI));
+				lua_settable(L, -3);
+				
+				lua_pushinteger(L, 2);
+				lua_pushnumber(L, cur->upper/(2*M_PI));
+				lua_settable(L, -3);
+			lua_settable(L, -3);
+			
+			lua_pushinteger(L, 2);
+			lua_pushinteger(L, cur->n);
+			lua_settable(L, -3);
+		lua_settable(L, -3);
+		
+		// Free the list elements as we go
+		list = cur;
+		cur = cur->next;
+		SPB_Free(list, "list at " __FILE__ ":" STR(__LINE__));
+	}
+	return 1;
+	/*
 	if(n <= 0){
 		lua_createtable(L, 0,0);
 		return 1;
@@ -328,6 +351,24 @@ static int Lua_SPB_BandSolver_GetFrequencies(lua_State *L){
 	}
 	free(z);
 	return 1;
+	*/
+}
+static int Lua_SPB_BandSolver_GetBandsNear(lua_State *L){
+	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
+	double freq, tol = 1e-7;
+	int n_bands;
+	luaarg_argspec args[] = {
+		{"TargetFrequency", luaarg_type_DOUBLE, 0, &freq   },
+		{"NumBands"       , luaarg_type_INT   , 0, &n_bands},
+		{"Tolerance"      , luaarg_type_DOUBLE, 1, &tol    },
+		{NULL, 0, 0, NULL}
+	};
+	luaarg_parse(L, 2, args);
+	return 0;
+}
+static int Lua_SPB_BandSolver_GetPerturbedFrequencies(lua_State *L){
+	SPB_BandSolver *S = Lua_SPB_BandSolver_this(L);
+	return 0;
 }
 static void Lua_SPB_Lib_Init(lua_State *L){
 	static const struct luaL_Reg Lua_SPB_lib[] = {
@@ -340,8 +381,10 @@ static void Lua_SPB_Lib_Init(lua_State *L){
 		{"AddMaterialLorentzPole", Lua_SPB_BandSolver_AddMaterialLorentzPole},
 		{"SetRectangle", Lua_SPB_BandSolver_SetRectangle},
 		{"OutputEpsilon", Lua_SPB_BandSolver_OutputEpsilon},
-		{"SolveK", Lua_SPB_BandSolver_SolveK},
-		{"GetFrequencies", Lua_SPB_BandSolver_GetFrequencies},
+		{"SetK", Lua_SPB_BandSolver_SetK},
+		{"GetApproximateFrequencies", Lua_SPB_BandSolver_GetApproximateFrequencies},
+		{"GetBandsNear", Lua_SPB_BandSolver_GetBandsNear},
+		{"GetPerturbedFrequencies", Lua_SPB_BandSolver_GetPerturbedFrequencies},
 		{NULL, NULL}
 	};
 	

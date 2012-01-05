@@ -12,8 +12,10 @@ SPB: $(SUBDIRS) \
 	z-NestedDissection.o \
 	z-LDL2.o \
 	z-SPBGlue.o \
+	z-mem.o \
 	z-util.o \
 	z-types.o \
+	z-match.o \
 	z-libumesh.o \
 	z-IntervalEigensolver.o \
 	z-BandSolver.o \
@@ -28,15 +30,19 @@ z-NestedDissection.o: NestedDissection.c NestedDissection.h
 	$(CC) $(CFLAGS) -c NestedDissection.c -o z-NestedDissection.o
 z-libumesh.o: libumesh.c libumesh.h
 	$(CC) $(CFLAGS) -c libumesh.c -o z-libumesh.o
+z-mem.o: mem.c mem.h
+	$(CC) $(CFLAGS) -c mem.c -o z-mem.o
 z-LDL2.o: LDL2.cpp LDL2.h
 	$(CXX) $(CFLAGS) -c LDL2.cpp -o z-LDL2.o
 z-SPBGlue.o: SPBGlue.cpp SPB.h SPB.hpp
 	$(CXX) $(CXXFLAGS) -c SPBGlue.cpp -o z-SPBGlue.o
 z-types.o: types.cpp SPB.hpp
 	$(CXX) $(CXXFLAGS) -c types.cpp -o z-types.o
+z-match.o: match.cpp match.h
+	$(CXX) $(CXXFLAGS) -c match.cpp -o z-match.o
 z-util.o: util.cpp util.h
 	$(CXX) $(CXXFLAGS) -c util.cpp -o z-util.o
-z-IntervalEigensolver.o: IntervalEigensolver.cpp IntervalEigensolver.h
+z-IntervalEigensolver.o: IntervalEigensolver.cpp SPB.hpp
 	$(CXX) $(CXXFLAGS) -c IntervalEigensolver.cpp -o z-IntervalEigensolver.o
 z-BandSolver.o: BandSolver.cpp SPB.hpp
 	$(CXX) $(CXXFLAGS) -c BandSolver.cpp -o z-BandSolver.o
